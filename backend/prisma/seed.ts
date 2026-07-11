@@ -6,6 +6,21 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('[SEED] Début de la génération des données de test...');
 
+  // Nettoyer les transactions existantes pour réinitialiser le seed proprement
+  await prisma.subBuyerLedger.deleteMany({});
+  await prisma.subBuyerAdvanceJustification.deleteMany({});
+  await prisma.subBuyerAdvance.deleteMany({});
+  await prisma.subBuyerExpense.deleteMany({});
+  await prisma.subBuyerDelivery.deleteMany({});
+  await prisma.subBuyerProfile.deleteMany({});
+  
+  await prisma.systemAlert.deleteMany({});
+  await prisma.stockMovement.deleteMany({});
+  await prisma.repayment.deleteMany({});
+  await prisma.credit.deleteMany({});
+  await prisma.purchase.deleteMany({});
+  await prisma.sale.deleteMany({});
+
   // 1. Rôles et Permissions
   const roles = [
     { name: 'ADMIN', description: 'Administrateur Système' },
@@ -203,20 +218,6 @@ async function main() {
   }
   console.log('[SEED] Planteurs créés.');
 
-  // Nettoyer les transactions existantes pour réinitialiser le seed proprement
-  await prisma.subBuyerLedger.deleteMany({});
-  await prisma.subBuyerAdvanceJustification.deleteMany({});
-  await prisma.subBuyerAdvance.deleteMany({});
-  await prisma.subBuyerExpense.deleteMany({});
-  await prisma.subBuyerDelivery.deleteMany({});
-  await prisma.subBuyerProfile.deleteMany({});
-  
-  await prisma.systemAlert.deleteMany({});
-  await prisma.stockMovement.deleteMany({});
-  await prisma.repayment.deleteMany({});
-  await prisma.credit.deleteMany({});
-  await prisma.purchase.deleteMany({});
-  await prisma.sale.deleteMany({});
 
   // 5. Génération d'Historique de Transactions sur 30 jours
   const now = new Date();
