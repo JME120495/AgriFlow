@@ -1,0 +1,622 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum DeviceType {
+  DESKTOP
+  TABLET
+  MOBILE
+  UNKNOWN
+}
+
+enum PermissionAction {
+  VIEW
+  ADD
+  EDIT
+  DELETE
+  EXPORT
+  PRINT
+  VALIDATE
+  CANCEL
+}
+
+model User {
+  id                  String         @id @default(uuid()) @db.Uuid
+  email               String?        @unique
+  phone               String?        @unique
+  passwordHash        String         @map("password_hash")
+  firstName           String         @map("first_name")
+  lastName            String         @map("last_name")
+  avatarUrl           String?        @map("avatar_url")
+  address             String?
+  jobTitle            String         @map("job_title")
+  
+  // Relations
+  roleId              String         @db.Uuid @map("role_id")
+  role                Role           @relation(fields: [roleId], references: [id])
+  
+  storeId             String?        @db.Uuid @map("store_id")
+  store               Store?         @relation(fields: [storeId], references: [id])
+  
+  managerId           String?        @db.Uuid @map("manager_id")
+  manager             User?          @relation("UserHierarchy", fields: [managerId], references: [id])
+  subordinates        User[]         @relation("UserHierarchy")
+  
+  hireDate            DateTime       @map("hire_date") @db.Date
+  status              UserStatus     @default(ACTIVE)
+  language            String         @default("fr")
+  timezone            String         @default("Africa/Douala")
+  
+  twoFactorSecret     String?        @map("two_factor_secret")
+  twoFactorEnabled    Boolean        @default(false) @map("two_factor_enabled")
+  
+  sessions            UserSession[]
+  auditLogs           AuditLog[]
+  
+  // Relations Module 2
+  purchases           Purchase[]       @relation("BuyerPurchases")
+  sales               Sale[]
+  subBuyerCredits     Credit[]         @relation("SubBuyerCredits")
+  createdCredits      Credit[]         @relation("CreatedCredits")
+  repayments          Repayment[]
+  stockMovements      StockMovement[]
+  dashboardConfig     DashboardConfig?
+  systemAlerts        SystemAlert[]
+  
+  // Relations Module 3
+  zoneManagerPlanters Planter[]        @relation("ZoneManagerPlanters")
+  subBuyerPlanters    Planter[]        @relation("SubBuyerPlanters")
+  payments            Payment[]
+  
+  // Relations Module 4 (Sous-acheteurs)
+  subBuyerProfile     SubBuyerProfile?
+  validatedAdvances   SubBuyerAdvance[]  @relation("AdvanceValidator")
+  validatedExpenses   SubBuyerExpense[]  @relation("ExpenseValidator")
+  weighedDeliveries   SubBuyerDelivery[] @relation("DeliveryWeigher")
+  
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Role {
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String           @unique
+  description     String?
+  isCustom        Boolean          @default(false) @map("is_custom")
+  users           User[]
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(uuid()) @db.Uuid
+  module          String
+  action          PermissionAction
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid @map("role_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String     @db.Uuid @map("permission_id")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Store {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  location    String?
+  capacityKg  Float    @default(50000.0) @map("capacity_kg")
+  
+  // Relations
+  users       User[]
+  planters    Planter[]
+  purchases   Purchase[]
+  stockMovements StockMovement[]
+  systemAlerts   SystemAlert[]
+  
+  // Relations Module 4
+  subBuyerDeliveries SubBuyerDelivery[]
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("stores")
+}
+
+model UserSession {
+  id         String     @id @default(uuid()) @db.Uuid
+  userId     String     @db.Uuid @map("user_id")
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String     @unique @map("token_hash")
+  ipAddress  String     @map("ip_address")
+  userAgent  String     @map("user_agent")
+  deviceType DeviceType @default(UNKNOWN) @map("device_type")
+  isValid    Boolean    @default(true) @map("is_valid")
+  expiresAt  DateTime   @map("expires_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@map("user_sessions")
+}
+
+model LoginAttempt {
+  id            BigInt   @id @default(autoincrement())
+  identifier    String
+  ipAddress     String   @map("ip_address")
+  wasSuccessful Boolean  @map("was_successful")
+  attemptedAt   DateTime @default(now()) @map("attempted_at")
+
+  @@index([identifier])
+  @@index([ipAddress])
+  @@map("login_attempts")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @db.Uuid @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  module     String
+  details    Json
+  ipAddress  String   @map("ip_address")
+  userAgent  String   @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Planter {
+  id          String     @id @default(uuid()) @db.Uuid
+  code        String     @unique
+  firstName   String     @map("first_name")
+  lastName    String     @map("last_name")
+  gender      String     @default("M") // M, F
+  birthDate   DateTime?  @map("birth_date") @db.Date
+  avatarUrl   String?    @map("avatar_url")
+  phone       String?    @unique
+  phoneSecondary String? @map("phone_secondary")
+  address     String?
+  
+  // Pièces d'identité
+  idType      String?    @map("id_type") // CNI, PASSPORT, CARTE_CONSEIL, etc.
+  idNumber    String?    @map("id_number")
+  idExpiry    DateTime?  @map("id_expiry") @db.Date
+  idFrontUrl  String?    @map("id_front_url")
+  idBackUrl   String?    @map("id_back_url")
+
+  status      UserStatus @default(ACTIVE)
+  
+  // Relations Commerciales
+  zoneManagerId String?  @db.Uuid @map("zone_manager_id")
+  zoneManager   User?    @relation("ZoneManagerPlanters", fields: [zoneManagerId], references: [id])
+  subBuyerId    String?  @db.Uuid @map("sub_buyer_id")
+  subBuyer      User?    @relation("SubBuyerPlanters", fields: [subBuyerId], references: [id])
+  
+  storeId     String?    @db.Uuid @map("store_id")
+  store       Store?     @relation(fields: [storeId], references: [id])
+  
+  plantation  Plantation?
+  documents   PlanterDocument[]
+  purchases   Purchase[]
+  credits     Credit[]
+  payments    Payment[]
+  
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@map("planters")
+}
+
+model Purchase {
+  id              String   @id @default(uuid()) @db.Uuid
+  planterId       String?  @db.Uuid @map("planter_id")
+  planter         Planter? @relation(fields: [planterId], references: [id])
+  buyerId         String   @db.Uuid @map("buyer_id")
+  buyer           User     @relation("BuyerPurchases", fields: [buyerId], references: [id])
+  storeId         String   @db.Uuid @map("store_id")
+  store           Store    @relation(fields: [storeId], references: [id])
+  
+  quantityKg      Float    @map("quantity_kg")
+  bagCount        Int      @map("bag_count")
+  pricePerKg      Float    @map("price_per_kg")
+  totalAmount     Float    @map("total_amount")
+  creditDeduction Float    @default(0.0) @map("credit_deduction")
+  
+  payments        Payment[]
+  date            DateTime @default(now())
+  
+  // Relations Module 4
+  deliveryId      String?           @db.Uuid @map("delivery_id")
+  delivery        SubBuyerDelivery? @relation("DeliveryPurchases", fields: [deliveryId], references: [id])
+  advanceJustifications SubBuyerAdvanceJustification[]
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("purchases")
+}
+
+model Sale {
+  id          String   @id @default(uuid()) @db.Uuid
+  buyerName   String   @map("buyer_name")
+  quantityKg  Float    @map("quantity_kg")
+  bagCount    Int      @map("bag_count")
+  pricePerKg  Float    @map("price_per_kg")
+  totalAmount Float    @map("total_amount")
+  
+  createdById String   @db.Uuid @map("created_by_id")
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("sales")
+}
+
+model Credit {
+  id          String      @id @default(uuid()) @db.Uuid
+  amount      Float
+  interestRate Float      @default(0.0) @map("interest_rate")
+  dueDate     DateTime    @map("due_date")
+  status      String      @default("PENDING") // PENDING, PAID, OVERDUE, PARTIALLY_PAID
+  
+  planterId   String?     @db.Uuid @map("planter_id")
+  planter     Planter?    @relation(fields: [planterId], references: [id])
+  subBuyerId  String?     @db.Uuid @map("sub_buyer_id")
+  subBuyer    User?       @relation("SubBuyerCredits", fields: [subBuyerId], references: [id])
+  
+  createdById String      @db.Uuid @map("created_by_id")
+  createdBy   User        @relation("CreatedCredits", fields: [createdById], references: [id])
+  
+  repayments  Repayment[]
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@map("credits")
+}
+
+model Repayment {
+  id          String   @id @default(uuid()) @db.Uuid
+  creditId    String   @db.Uuid @map("credit_id")
+  credit      Credit   @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  amount      Float
+  
+  createdById String   @db.Uuid @map("created_by_id")
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("repayments")
+}
+
+model StockMovement {
+  id          String   @id @default(uuid()) @db.Uuid
+  storeId     String   @db.Uuid @map("store_id")
+  store       Store    @relation(fields: [storeId], references: [id])
+  quantityKg  Float    @map("quantity_kg") // positive = entry, negative = exit
+  bagCount    Int      @default(0) @map("bag_count")
+  type        String   @map("type") // PURCHASE, SALE, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT
+  referenceId String?  @db.Uuid @map("reference_id")
+  
+  createdById String   @db.Uuid @map("created_by_id")
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("stock_movements")
+}
+
+model SystemAlert {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String    @map("type") // LOW_STOCK, OVERDUE_CREDIT, USER_INACTIVITY, WAREHOUSE_FULL, SUSPICIOUS_TRANSACTION, VOLATILITY
+  severity    String    @map("severity") // INFO, WARNING, CRITICAL
+  message     String
+  isResolved  Boolean   @default(false) @map("is_resolved")
+  
+  storeId     String?   @db.Uuid @map("store_id")
+  store       Store?    @relation(fields: [storeId], references: [id])
+  userId      String?   @db.Uuid @map("user_id")
+  user        User?     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  resolvedAt  DateTime? @map("resolved_at")
+
+  @@map("system_alerts")
+}
+
+model DashboardConfig {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  visibleKpis Json     @map("visible_kpis")
+  layout      Json     @map("layout")
+  savedViews  Json     @map("saved_views")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("dashboard_configs")
+}
+
+model Plantation {
+  id            String   @id @default(uuid()) @db.Uuid
+  planterId     String   @unique @db.Uuid @map("planter_id")
+  planter       Planter  @relation(fields: [planterId], references: [id], onDelete: Cascade)
+  
+  name          String
+  location      String?
+  areaHectares  Float    @map("area_hectares")
+  parcelsCount  Int      @default(1) @map("parcels_count")
+  treesCount    Int?     @map("trees_count")
+  creationYear  Int?     @map("creation_year")
+  variety       String?  // ex: Forastero, Trinitario
+  
+  latitude      Float?
+  longitude     Float?
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("plantations")
+}
+
+model PlanterDocument {
+  id          String   @id @default(uuid()) @db.Uuid
+  planterId   String   @db.Uuid @map("planter_id")
+  planter     Planter  @relation(fields: [planterId], references: [id], onDelete: Cascade)
+  
+  name        String
+  type        String   // ID_CARD, CONTRACT, AGRICULTURAL_CERTIFICATE, OTHER
+  fileUrl     String   @map("file_url")
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("planter_documents")
+}
+
+model Payment {
+  id          String   @id @default(uuid()) @db.Uuid
+  planterId   String   @db.Uuid @map("planter_id")
+  planter     Planter  @relation(fields: [planterId], references: [id], onDelete: Cascade)
+  purchaseId  String?  @db.Uuid @map("purchase_id")
+  purchase    Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  
+  amount      Float
+  method      String   // CASH, MOBILE_MONEY, BANK_TRANSFER
+  reference   String?
+  
+  date        DateTime @default(now())
+  createdById String   @db.Uuid @map("created_by_id")
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("payments")
+}
+
+// ==========================================
+// 1. Profil Spécifique du Sous-acheteur
+// ==========================================
+model SubBuyerProfile {
+  id                      String            @id @default(uuid()) @db.Uuid
+  userId                  String            @unique @db.Uuid @map("user_id")
+  user                    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Infos personnelles complémentaires
+  gender                  String            @default("M") @db.VarChar(1)
+  birthDate               DateTime          @map("birth_date") @db.Date
+  photoUrl                String?           @map("photo_url")
+  phoneSecondary          String?           @map("phone_secondary")
+  
+  // Pièces d'identité (KYC)
+  idType                  String            @map("id_type") // CNI, PASSPORT, CARTE_CONSEIL
+  idNumber                String            @map("id_number")
+  idExpiryDate            DateTime          @map("id_expiry_date") @db.Date
+  idFrontUrl              String            @map("id_front_url")
+  idBackUrl               String            @map("id_back_url")
+  
+  // Zone d'achat géographique
+  purchaseZone            String            @map("purchase_zone")
+  region                  String
+  department              String
+  district                String            @map("arrondissement")
+  mainVillage             String            @map("main_village")
+  
+  collaborationStartDate   DateTime          @default(now()) @map("collaboration_start_date") @db.Date
+  creditLimit             Float             @default(5000000.0) @map("credit_limit") // Plafond d'avance en FCFA
+  
+  // Relations
+  advances                SubBuyerAdvance[]
+  deliveries              SubBuyerDelivery[]
+  ledgerEntries           SubBuyerLedger[]
+  expenses                SubBuyerExpense[]
+
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+
+  @@map("sub_buyer_profiles")
+}
+
+// ==========================================
+// 2. Gestion des Avances de Fonds
+// ==========================================
+model SubBuyerAdvance {
+  id                      String            @id @default(uuid()) @db.Uuid
+  code                    String            @unique // AV-YYYY-MM-XXXX
+  subBuyerProfileId       String            @db.Uuid @map("sub_buyer_profile_id")
+  subBuyerProfile         SubBuyerProfile   @relation(fields: [subBuyerProfileId], references: [id], onDelete: Cascade)
+  
+  amount                  Float
+  remainingAmount         Float             @map("remaining_amount") // Solde restant à justifier
+  reason                  String            // ACHAT_CACAO, TRANSPORT, INTRANTS
+  paymentMethod           String            @map("payment_method") // CASH, MOBILE_MONEY, BANK_TRANSFER, CHEQUE
+  status                  String            @default("DISBURSED") // PENDING, DISBURSED, PARTIALLY_JUSTIFIED, FULLY_JUSTIFIED, REPAID
+  
+  validatedById           String            @db.Uuid @map("validated_by_id")
+  validatedBy             User              @relation("AdvanceValidator", fields: [validatedById], references: [id])
+  
+  observations            String?           @db.Text
+  date                    DateTime          @default(now())
+  
+  justifications          SubBuyerAdvanceJustification[]
+  ledgerEntries           SubBuyerLedger[]
+  
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+
+  @@map("sub_buyer_advances")
+}
+
+// ==========================================
+// 3. Justifications d'Avances (Table d'association)
+// ==========================================
+model SubBuyerAdvanceJustification {
+  id                      String            @id @default(uuid()) @db.Uuid
+  advanceId               String            @db.Uuid @map("advance_id")
+  advance                 SubBuyerAdvance   @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  
+  type                    String            // PURCHASE, EXPENSE, CASH_REPAYMENT
+  amount                  Float             // Part de l'avance consommée par ce justificatif
+  
+  purchaseId              String?           @db.Uuid @map("purchase_id")
+  purchase                Purchase?         @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  
+  expenseId               String?           @db.Uuid @map("expense_id")
+  expense                 SubBuyerExpense?  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  
+  date                    DateTime          @default(now())
+  createdAt               DateTime          @default(now()) @map("created_at")
+
+  @@map("sub_buyer_advance_justifications")
+}
+
+// ==========================================
+// 4. Dépenses Opérationnelles Terrain
+// ==========================================
+model SubBuyerExpense {
+  id                      String            @id @default(uuid()) @db.Uuid
+  subBuyerProfileId       String            @db.Uuid @map("sub_buyer_profile_id")
+  subBuyerProfile         SubBuyerProfile   @relation(fields: [subBuyerProfileId], references: [id], onDelete: Cascade)
+  
+  amount                  Float
+  category                String            // TRANSPORT, DRYING, BAGS, MEAL, LABOUR, OTHER
+  description             String
+  receiptUrl              String?           @map("receipt_url")
+  date                    DateTime          @default(now())
+  
+  validatedById           String?           @db.Uuid @map("validated_by_id")
+  validatedBy             User?             @relation("ExpenseValidator", fields: [validatedById], references: [id])
+  status                  String            @default("PENDING") // PENDING, APPROVED, REJECTED
+  
+  justifications          SubBuyerAdvanceJustification[]
+  ledgerEntries           SubBuyerLedger[]
+  
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+
+  @@map("sub_buyer_expenses")
+}
+
+// ==========================================
+// 5. Livraisons de Cacao au Magasin
+// ==========================================
+model SubBuyerDelivery {
+  id                      String            @id @default(uuid()) @db.Uuid
+  code                    String            @unique // LIV-YYYY-MM-XXXX
+  subBuyerProfileId       String            @db.Uuid @map("sub_buyer_profile_id")
+  subBuyerProfile         SubBuyerProfile   @relation(fields: [subBuyerProfileId], references: [id], onDelete: Cascade)
+  
+  storeId                 String            @db.Uuid @map("store_id")
+  store                   Store             @relation(fields: [storeId], references: [id])
+  
+  deliveryDate            DateTime          @map("delivery_date")
+  
+  // Déclarations terrain (Pisteur)
+  declaredQuantityKg      Float             @map("declared_quantity_kg")
+  declaredBagCount        Int               @map("declared_bag_count")
+  
+  // Mesures pesées (Magasinier)
+  receivedQuantityKg      Float?            @map("received_quantity_kg")
+  receivedBagCount        Int?              @map("received_bag_count")
+  
+  // Métriques d'analyses qualité et écarts
+  lossQuantityKg          Float?            @map("loss_quantity_kg")
+  lossPercentage          Float?            @map("loss_percentage")
+  moistureContent         Float?            @map("moisture_content") // Humidité en %
+  subgradePercentage      Float?            @map("subgrade_percentage") // Déchets en %
+  
+  status                  String            @default("SUBMITTED") // SUBMITTED, WEIGHED, VALIDATED, LITIGATION, CANCELLED
+  
+  magasinierId            String?           @db.Uuid @map("magasinier_id")
+  magasinier              User?             @relation("DeliveryWeigher", fields: [magasinierId], references: [id])
+  
+  notes                 String?           @db.Text
+  alertTriggered          Boolean           @default(false) @map("alert_triggered")
+  
+  // Relations
+  purchases               Purchase[]        @relation("DeliveryPurchases")
+  ledgerEntries           SubBuyerLedger[]
+  
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+
+  @@map("sub_buyer_deliveries")
+}
+
+// ==========================================
+// 6. Journal du Portefeuille (Mouvements de Caisse)
+// ==========================================
+model SubBuyerLedger {
+  id                      String            @id @default(uuid()) @db.Uuid
+  subBuyerProfileId       String            @db.Uuid @map("sub_buyer_profile_id")
+  subBuyerProfile         SubBuyerProfile   @relation(fields: [subBuyerProfileId], references: [id], onDelete: Cascade)
+  
+  type                    String            // CREDIT (avance de fonds reçu), DEBIT (livraison de cacao effectuée, dépense justifiée, remboursement espèces)
+  amount                  Float
+  balance                 Float             // Solde progressif (Solde dû restant)
+  
+  // Références d'audit
+  advanceId               String?           @db.Uuid @map("advance_id")
+  advance                 SubBuyerAdvance?  @relation(fields: [advanceId], references: [id], onDelete: SetNull)
+  
+  deliveryId              String?           @db.Uuid @map("delivery_id")
+  delivery                SubBuyerDelivery? @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+  
+  expenseId               String?           @db.Uuid @map("expense_id")
+  expense                 SubBuyerExpense?  @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  
+  description             String
+  date                    DateTime          @default(now())
+  createdAt               DateTime          @default(now()) @map("created_at")
+
+  @@map("sub_buyer_ledgers")
+}
+

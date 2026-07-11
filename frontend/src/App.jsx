@@ -1,0 +1,120 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './pages/Auth/Login';
+import ForgotPassword from './pages/Auth/ForgotPassword';
+import Users from './pages/Admin/Users';
+import Permissions from './pages/Admin/Permissions';
+import Dashboard from './pages/Dashboard/Dashboard';
+import PlanterList from './pages/Planters/PlanterList';
+import PlanterForm from './pages/Planters/PlanterForm';
+import PlanterDetails from './pages/Planters/PlanterDetails';
+import SubBuyersList from './pages/SubBuyers/SubBuyersList';
+import SubBuyerDetail from './pages/SubBuyers/SubBuyerDetail';
+
+// Route protégée vérifiant si l'utilisateur est authentifié
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
+        Chargement de l'environnement sécurisé...
+      </div>
+    );
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/planters"
+            element={
+              <ProtectedRoute>
+                <PlanterList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/planters/new"
+            element={
+              <ProtectedRoute>
+                <PlanterForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/planters/:id"
+            element={
+              <ProtectedRoute>
+                <PlanterDetails />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/planters/:id/edit"
+            element={
+              <ProtectedRoute>
+                <PlanterForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sub-buyers"
+            element={
+              <ProtectedRoute>
+                <SubBuyersList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sub-buyers/:id"
+            element={
+              <ProtectedRoute>
+                <SubBuyerDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute>
+                <Users />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/permissions"
+            element={
+              <ProtectedRoute>
+                <Permissions />
+              </ProtectedRoute>
+            }
+          />
+          
+          {/* Redirection par défaut */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
+}
+
+export default App;
