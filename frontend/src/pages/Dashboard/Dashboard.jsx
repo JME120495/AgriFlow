@@ -147,8 +147,8 @@ const Dashboard = () => {
     return role;
   };
 
-  const isMagasinier = authUser?.role?.name === 'Magasinier';
-  const isSousAcheteur = authUser?.role?.name === 'Sous-acheteur';
+  const isMagasinier = authUser?.role?.name === 'MAGASINIER';
+  const isSousAcheteur = authUser?.role?.name === 'SOUS_ACHETEUR';
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col selection:bg-cocoa-500/30">
