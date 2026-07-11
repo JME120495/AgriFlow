@@ -4,10 +4,12 @@ import { useAuth } from '../../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, UserPlus, Eye, LogOut, Sparkles, Map, Award, TrendingUp, Users } from 'lucide-react';
 
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
+
 const MOCK_MANAGERS = [
-  { id: 'm1', fullName: 'Jean Marcel Essono', user: { firstName: 'Jean Marcel', lastName: 'Essono', email: 'essonojeanmarcel@gmail.com', phone: '+237699999901' }, performanceScore: 92.5, metrics: { totalQuantityKg: 145000.0, averageMoisture: 7.2, repaymentRate: 95.0, lossPercentage: 0.8 } },
-  { id: 'm2', fullName: 'Alassane Touré', user: { firstName: 'Alassane', lastName: 'Touré', email: 'a.toure@agriflow.com', phone: '+2250707070801' }, performanceScore: 84.2, metrics: { totalQuantityKg: 98000.0, averageMoisture: 7.4, repaymentRate: 88.0, lossPercentage: 1.2 } },
-  { id: 'm3', fullName: 'Koffi Yao', user: { firstName: 'Koffi', lastName: 'Yao', email: 'k.yao@agriflow.com', phone: '+2250707070802' }, performanceScore: 78.1, metrics: { totalQuantityKg: 112000.0, averageMoisture: 7.8, repaymentRate: 82.5, lossPercentage: 1.5 } }
+  { id: 'm1', fullName: 'Jean Marcel Essono', user: { firstName: 'Jean Marcel', lastName: 'Essono', email: 'essonojeanmarcel@gmail.com', phone: '+237699999901' }, performanceScore: 92.5, metrics: { totalQuantityKg: 145000.0, averageMoisture: 7.2, repaymentRate: 95.0, lossPercentage: 0.8, newPlantersCount: 14, deliveriesCount: 18 }, subScores: { volume: 95, quality: 90, repayment: 95, recruitment: 90, regularity: 95 } },
+  { id: 'm2', fullName: 'Alassane Touré', user: { firstName: 'Alassane', lastName: 'Touré', email: 'a.toure@agriflow.com', phone: '+2250707070801' }, performanceScore: 84.2, metrics: { totalQuantityKg: 98000.0, averageMoisture: 7.4, repaymentRate: 88.0, lossPercentage: 1.2, newPlantersCount: 8, deliveriesCount: 12 }, subScores: { volume: 82, quality: 85, repayment: 88, recruitment: 80, regularity: 85 } },
+  { id: 'm3', fullName: 'Koffi Yao', user: { firstName: 'Koffi', lastName: 'Yao', email: 'k.yao@agriflow.com', phone: '+2250707070802' }, performanceScore: 75.1, metrics: { totalQuantityKg: 112000.0, averageMoisture: 7.8, repaymentRate: 82.5, lossPercentage: 1.5, newPlantersCount: 9, deliveriesCount: 8 }, subScores: { volume: 75, quality: 70, repayment: 82, recruitment: 80, regularity: 70 } }
 ];
 
 const ZoneManagersList = () => {
@@ -26,15 +28,24 @@ const ZoneManagersList = () => {
   const [phoneSecondary, setPhoneSecondary] = useState('');
   const [recruitmentDate, setRecruitmentDate] = useState(new Date().toISOString().split('T')[0]);
 
+  const handleRowClick = (id) => {
+    navigate(`/zone-managers/${id}`);
+  };
+
   const fetchManagers = async () => {
     setLoading(true);
     try {
       // Tenter de recuperer le classement des performances
       const res = await api.get('/api/v1/zone-managers/performance/leaderboard');
-      setManagers(res.data && res.data.length > 0 ? res.data : MOCK_MANAGERS);
+      setManagers(res.data && res.data.length > 0 ? res.data : (USE_MOCKS ? MOCK_MANAGERS : []));
     } catch (err) {
-      console.warn('[SYS] Échec chargement API leaderboard, utilisation du mock.');
-      setManagers(MOCK_MANAGERS);
+      if (USE_MOCKS) {
+        console.warn('[SYS] Échec chargement API leaderboard, utilisation du mock.');
+        setManagers(MOCK_MANAGERS);
+      } else {
+        console.error('[SYS] Erreur API leaderboard:', err);
+        setManagers([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -147,36 +158,47 @@ const ZoneManagersList = () => {
 
         {/* Leaderboard Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {filteredManagers.slice(0, 3).map((m, i) => (
-            <div key={m.id} className="relative bg-slate-900 border border-slate-800/80 rounded-2xl p-6 flex flex-col gap-4 overflow-hidden group hover:border-slate-700 transition-all">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-cocoa-500/10 to-indigo-500/10 rounded-full blur-xl group-hover:scale-125 transition-transform" />
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cocoa-600 to-amber-600 flex items-center justify-center font-bold text-lg">
-                    {i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}
+          {filteredManagers.slice(0, 3).map((m, i) => {
+            const scoreColor = m.performanceScore >= 85 ? 'text-emerald-400' : m.performanceScore >= 70 ? 'text-amber-400' : 'text-red-400';
+            return (
+              <div key={m.id} className="relative bg-slate-900 border border-slate-800/80 rounded-2xl p-6 flex flex-col gap-4 overflow-hidden group hover:border-slate-700 transition-all">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-cocoa-500/10 to-indigo-500/10 rounded-full blur-xl group-hover:scale-125 transition-transform" />
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cocoa-600 to-amber-600 flex items-center justify-center font-bold text-lg">
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-100 group-hover:text-cocoa-400 transition-colors">{m.fullName}</h3>
+                      <p className="text-xs text-slate-400">{m.user?.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Score SPG</span>
+                    <span className={`text-2xl font-black ${scoreColor}`}>{m.performanceScore}%</span>
+                  </div>
+                </div>
+                <div className="border-t border-slate-800/80 pt-4 grid grid-cols-2 gap-y-3 gap-x-4 text-[11px]">
+                  <div>
+                    <span className="text-slate-500 block mb-0.5">Volume Cacao</span>
+                    <span className="font-semibold text-slate-300">{(m.metrics?.totalQuantityKg / 1000).toFixed(1)} Tonnes</span>
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-100 group-hover:text-cocoa-400 transition-colors">{m.fullName}</h3>
-                    <p className="text-xs text-slate-400">{m.user?.email}</p>
+                    <span className="text-slate-500 block mb-0.5">Recouvrement</span>
+                    <span className="font-semibold text-slate-300">{m.metrics?.repaymentRate}%</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block mb-0.5">Recrutement</span>
+                    <span className="font-semibold text-slate-300">{m.metrics?.newPlantersCount || 0} Planteurs</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block mb-0.5">Régularité</span>
+                    <span className="font-semibold text-slate-300">{m.metrics?.deliveriesCount || 0} Livraisons</span>
                   </div>
                 </div>
-                <div className="flex flex-col items-end">
-                  <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Score SPG</span>
-                  <span className="text-2xl font-black text-white">{m.performanceScore}%</span>
-                </div>
               </div>
-              <div className="border-t border-slate-800/80 pt-4 grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <span className="text-slate-500 block mb-1">Volume Cacao</span>
-                  <span className="font-semibold text-slate-300">{(m.metrics?.totalQuantityKg / 1000).toFixed(1)} Tonnes</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block mb-1">Recouvrement</span>
-                  <span className="font-semibold text-slate-300">{m.metrics?.repaymentRate}%</span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Search & Actions */}
@@ -211,47 +233,52 @@ const ZoneManagersList = () => {
                 <tr className="border-b border-slate-800 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   <th className="px-6 py-4">Rang</th>
                   <th className="px-6 py-4">Chef de Zone</th>
-                  <th className="px-6 py-4">Téléphone</th>
                   <th className="px-6 py-4">Volume (Kg)</th>
-                  <th className="px-6 py-4">Humidité moyenne</th>
-                  <th className="px-6 py-4">Taux de Perte</th>
+                  <th className="px-6 py-4">H2O moyenne</th>
+                  <th className="px-6 py-4">Recouvrement</th>
+                  <th className="px-6 py-4">Recrutement</th>
+                  <th className="px-6 py-4">Régularité</th>
                   <th className="px-6 py-4">Score SPG</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50 text-sm">
-                {filteredManagers.map((m, index) => (
-                  <tr 
-                    key={m.id} 
-                    onClick={() => handleRowClick(m.id)}
-                    className="hover:bg-slate-800/30 transition-colors cursor-pointer group"
-                  >
-                    <td className="px-6 py-4 font-bold text-slate-400 group-hover:text-white transition-colors">
-                      #{index + 1}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-200 group-hover:text-cocoa-400 transition-colors">
-                        {m.fullName}
-                      </div>
-                      <div className="text-xs text-slate-500">{m.user?.email}</div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-300">{m.user?.phone || 'N/A'}</td>
-                    <td className="px-6 py-4 text-slate-300 font-mono">{(m.metrics?.totalQuantityKg || 0).toLocaleString()} kg</td>
-                    <td className="px-6 py-4 text-slate-300">{m.metrics?.averageMoisture || 7.5}%</td>
-                    <td className="px-6 py-4 text-slate-300">{m.metrics?.lossPercentage || 0}%</td>
-                    <td className="px-6 py-4">
-                      <span className="font-bold text-cocoa-400">{m.performanceScore}%</span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleRowClick(m.id); }}
-                        className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition-all shadow-md active:scale-95"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredManagers.map((m, index) => {
+                  const scoreColor = m.performanceScore >= 85 ? 'text-emerald-400' : m.performanceScore >= 70 ? 'text-amber-400' : 'text-red-400';
+                  return (
+                    <tr 
+                      key={m.id} 
+                      onClick={() => handleRowClick(m.id)}
+                      className="hover:bg-slate-800/30 transition-colors cursor-pointer group"
+                    >
+                      <td className="px-6 py-4 font-bold text-slate-400 group-hover:text-white transition-colors">
+                        #{index + 1}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-200 group-hover:text-cocoa-400 transition-colors">
+                          {m.fullName}
+                        </div>
+                        <div className="text-xs text-slate-500">{m.user?.email}</div>
+                      </td>
+                      <td className="px-6 py-4 text-slate-300 font-mono font-medium">{(m.metrics?.totalQuantityKg || 0).toLocaleString()} kg</td>
+                      <td className="px-6 py-4 text-slate-300">{m.metrics?.averageMoisture || 7.5}%</td>
+                      <td className="px-6 py-4 text-slate-300">{m.metrics?.repaymentRate || 100}%</td>
+                      <td className="px-6 py-4 text-slate-300">{m.metrics?.newPlantersCount || 0} rec.</td>
+                      <td className="px-6 py-4 text-slate-300">{m.metrics?.deliveriesCount || 0} liv.</td>
+                      <td className="px-6 py-4">
+                        <span className={`font-black ${scoreColor}`}>{m.performanceScore}%</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleRowClick(m.id); }}
+                          className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition-all shadow-md active:scale-95"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

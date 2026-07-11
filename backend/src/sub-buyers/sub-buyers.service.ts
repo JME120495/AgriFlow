@@ -676,7 +676,7 @@ export class SubBuyersService {
         plantation: true,
         purchases: {
           where: { buyerId: userId },
-          orderBy: { date: 'desc' },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -716,16 +716,16 @@ export class SubBuyersService {
     });
 
     const purchasedToday = purchases
-      .filter((p) => p.date >= startOfToday)
-      .reduce((sum, p) => sum + p.quantityKg, 0);
+      .filter((p) => p.createdAt >= startOfToday)
+      .reduce((sum, p) => sum + p.weightNetPaid, 0);
 
     const purchasedMonth = purchases
-      .filter((p) => p.date >= startOfMonth)
-      .reduce((sum, p) => sum + p.quantityKg, 0);
+      .filter((p) => p.createdAt >= startOfMonth)
+      .reduce((sum, p) => sum + p.weightNetPaid, 0);
 
     const purchasedYear = purchases
-      .filter((p) => p.date >= startOfYear)
-      .reduce((sum, p) => sum + p.quantityKg, 0);
+      .filter((p) => p.createdAt >= startOfYear)
+      .reduce((sum, p) => sum + p.weightNetPaid, 0);
 
     // 3. Counters
     const activePlantersCount = await this.prisma.planter.count({
@@ -734,7 +734,7 @@ export class SubBuyersService {
         purchases: {
           some: {
             buyerId: userId,
-            date: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }, // active last 30 days
+            createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }, // active last 30 days
           },
         },
       },
@@ -745,8 +745,8 @@ export class SubBuyersService {
     });
 
     // 4. Averages
-    const totalPurchasedKg = purchases.reduce((sum, p) => sum + p.quantityKg, 0);
-    const totalPurchasedAmount = purchases.reduce((sum, p) => sum + p.totalAmount, 0);
+    const totalPurchasedKg = purchases.reduce((sum, p) => sum + p.weightNetPaid, 0);
+    const totalPurchasedAmount = purchases.reduce((sum, p) => sum + p.amountGross, 0);
     const avgPurchasePrice = totalPurchasedKg > 0 ? totalPurchasedAmount / totalPurchasedKg : 0.0;
 
     // Average cost per Kg: (Total purchases amount + validated expenses) / total delivered Kg
@@ -764,7 +764,7 @@ export class SubBuyersService {
 
     // 5. Global Performance score
     const creditRatio = totalAdvances > 0 ? currentBalance / totalAdvances : 0;
-    const limitRisk = creditRatio > 0.8 ? 0 : 100 - (creditRatio * 100);
+    const limitRisk = creditRatio > 0.8 ? 0 : 100 - (creditRatio * 100); // Score Respect Plafond (sur 100)
 
     const totalWeighedDeliveries = await this.prisma.subBuyerDelivery.findMany({
       where: { subBuyerProfileId: profileId, status: { in: ['VALIDATED', 'LITIGATION'] } },
@@ -772,9 +772,14 @@ export class SubBuyersService {
     const totalLossKg = totalWeighedDeliveries.reduce((sum, d) => sum + (d.lossQuantityKg || 0), 0);
     const totalDeclaredKg = totalWeighedDeliveries.reduce((sum, d) => sum + d.declaredQuantityKg, 0);
     const avgLossRate = totalDeclaredKg > 0 ? (totalLossKg / totalDeclaredKg) * 100 : 0;
-    const lossScore = Math.max(0, 100 - (avgLossRate * 30)); // 3.3% loss means 0 score
+    const lossScore = Math.max(0, 100 - (avgLossRate * 30)); // Score Taux de Perte (sur 100)
 
-    const performanceScore = Math.round((limitRisk * 0.4) + (lossScore * 0.6));
+    // Volume vs Objectif (Objectif mensuel de 10 tonnes par défaut si non défini)
+    const monthlyObjectiveKg = 10000;
+    const volumeScore = Math.min((purchasedMonth / monthlyObjectiveKg) * 100, 100);
+
+    // Nouvelle pondération: Respect Plafond (30%), Taux de Perte (40%), Volume (30%)
+    const performanceScore = Math.round((limitRisk * 0.3) + (lossScore * 0.4) + (volumeScore * 0.3));
 
     return {
       currentBalance,

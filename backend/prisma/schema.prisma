@@ -57,7 +57,6 @@ model User {
   status              UserStatus     @default(ACTIVE)
   language            String         @default("fr")
   timezone            String         @default("Africa/Douala")
-  
   twoFactorSecret     String?        @map("two_factor_secret")
   twoFactorEnabled    Boolean        @default(false) @map("two_factor_enabled")
   
@@ -84,6 +83,7 @@ model User {
   validatedAdvances   SubBuyerAdvance[]  @relation("AdvanceValidator")
   validatedExpenses   SubBuyerExpense[]  @relation("ExpenseValidator")
   weighedDeliveries   SubBuyerDelivery[] @relation("DeliveryWeigher")
+  subBuyerPurchases   Purchase[]         @relation("SubBuyerPurchases")
   
   // Relations Module 5 (Chefs de zone)
   zoneManagerProfile  ZoneManagerProfile?
@@ -235,31 +235,67 @@ model Planter {
 }
 
 model Purchase {
-  id              String   @id @default(uuid()) @db.Uuid
-  planterId       String?  @db.Uuid @map("planter_id")
-  planter         Planter? @relation(fields: [planterId], references: [id])
-  buyerId         String   @db.Uuid @map("buyer_id")
-  buyer           User     @relation("BuyerPurchases", fields: [buyerId], references: [id])
-  storeId         String   @db.Uuid @map("store_id")
-  store           Store    @relation(fields: [storeId], references: [id])
+  id                  String             @id @default(uuid()) @db.Uuid
+  purchaseNumber      String             @unique @map("purchase_number") // Format: ACH-YYYYMM-XXXX
+  status              PurchaseStatus     @default(PENDING_PAYMENT)
   
-  quantityKg      Float    @map("quantity_kg")
-  bagCount        Int      @map("bag_count")
-  pricePerKg      Float    @map("price_per_kg")
-  totalAmount     Float    @map("total_amount")
-  creditDeduction Float    @default(0.0) @map("credit_deduction")
+  // Acteurs impliqués
+  planterId           String?            @db.Uuid @map("planter_id")
+  planter             Planter?           @relation(fields: [planterId], references: [id])
+  subBuyerId          String?            @db.Uuid @map("sub_buyer_id")
+  subBuyer            User?              @relation("SubBuyerPurchases", fields: [subBuyerId], references: [id])
   
-  payments        Payment[]
-  date            DateTime @default(now())
-  
-  // Relations Module 4
-  deliveryId      String?           @db.Uuid @map("delivery_id")
-  delivery        SubBuyerDelivery? @relation("DeliveryPurchases", fields: [deliveryId], references: [id])
-  advanceJustifications SubBuyerAdvanceJustification[]
-  
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  buyerId             String             @db.Uuid @map("buyer_id")
+  buyer               User               @relation("BuyerPurchases", fields: [buyerId], references: [id])
+  storeId             String             @db.Uuid @map("store_id")
+  store               Store              @relation(fields: [storeId], references: [id])
 
+  // Informations sur le cacao
+  campaign            String             // ex: "2025/2026"
+  lotNumber           String?            @map("lot_number") // Numéro de lot traçabilité
+  bagCount            Int                @map("bag_count")
+  packagingType       String             @map("packaging_type") // JUTE, PLASTIQUE
+  qualityGrade        CocoaQualityGrade  @default(GRADE_2) @map("quality_grade")
+
+  // Pesée & Tare
+  weightGross         Float              @map("weight_gross") // Poids brut total (kg)
+  weightBags          Float              @map("weight_bags")  // Poids estimé des sacs (kg)
+  weightNet           Float              @map("weight_net")   // weightGross - weightBags
+  
+  // Analyse Qualité (Réfactions)
+  moistureRate        Float              @map("moisture_rate")  // Humidité %
+  impurityRate        Float              @map("impurity_rate")  // Taux de déchets %
+  moldyRate           Float              @map("moldy_rate")     // Fèves moisies %
+  slatyRate           Float              @map("slaty_rate")     // Fèves ardoisées %
+  insectRate          Float              @map("insect_rate")    // Fèves mitées/insects %
+  grainage            Int                // Nombre de fèves par 100g
+  
+  weightRefactionKg   Float              @default(0.0) @map("weight_refaction_kg") // Poids déduit (kg)
+  weightNetPaid       Float              @map("weight_net_paid") // weightNet - weightRefactionKg
+
+  // Tarification
+  pricePerKg          Float              @map("price_per_kg") // Prix au kg fixé pour la campagne
+  amountGross         Float              @map("amount_gross") // weightNetPaid * pricePerKg
+  
+  // Déductions Financières
+  creditDeduction     Float              @default(0.0) @map("credit_deduction") // Crédits retenus automatiquement
+  amountNetPaid       Float              @map("amount_net_paid") // amountGross - creditDeduction
+
+  // Métadonnées balance
+  scaleModel          String?            @map("scale_model")
+  scaleSerialNumber   String?            @map("scale_serial_number")
+
+  // Existing Relations
+  payments            Payment[]
+  deliveryId          String?           @db.Uuid @map("delivery_id")
+  delivery            SubBuyerDelivery? @relation("DeliveryPurchases", fields: [deliveryId], references: [id])
+  advanceJustifications SubBuyerAdvanceJustification[]
+  deductions          AutoDeduction[]
+
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  @@index([purchaseNumber])
   @@map("purchases")
 }
 
@@ -282,39 +318,65 @@ model Sale {
 }
 
 model Credit {
-  id          String      @id @default(uuid()) @db.Uuid
-  amount      Float
-  interestRate Float      @default(0.0) @map("interest_rate")
-  dueDate     DateTime    @map("due_date")
-  status      String      @default("PENDING") // PENDING, PAID, OVERDUE, PARTIALLY_PAID
+  id                  String             @id @default(uuid()) @db.Uuid
+  creditNumber        String             @unique @map("credit_number")
+  beneficiaryType     BeneficiaryType    @map("beneficiary_type")
+  beneficiaryId       String             @db.Uuid @map("beneficiary_id")
+  categoryId          String             @db.Uuid @map("category_id")
+  category            CreditCategory     @relation(fields: [categoryId], references: [id])
   
-  planterId   String?     @db.Uuid @map("planter_id")
-  planter     Planter?    @relation(fields: [planterId], references: [id])
-  subBuyerId  String?     @db.Uuid @map("sub_buyer_id")
-  subBuyer    User?       @relation("SubBuyerCredits", fields: [subBuyerId], references: [id])
+  amountGranted       Decimal            @db.Decimal(15, 2) @map("amount_granted")
+  amountRepaid        Decimal            @default(0) @db.Decimal(15, 2) @map("amount_repaid")
+  balance             Decimal            @db.Decimal(15, 2)
+  currency            String             @default("XOF") @db.VarChar(3)
   
-  createdById String      @db.Uuid @map("created_by_id")
-  createdBy   User        @relation("CreatedCredits", fields: [createdById], references: [id])
+  grantedAt           DateTime           @map("granted_at") @db.Date
+  dueDate             DateTime           @map("due_date") @db.Date
+  paymentMethod       PaymentMethod      @map("payment_method")
+  sourceAccount       String             @map("source_account")
   
-  repayments  Repayment[]
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  status              CreditStatus       @default(DRAFT)
+  observations        String?            @db.Text
+  attachments         String[]           @map("attachments")
+  
+  // Relations
+  createdById         String             @db.Uuid @map("created_by_id")
+  createdBy           User               @relation("CreatedCredits", fields: [createdById], references: [id])
+  
+  planterId           String?            @db.Uuid @map("planter_id")
+  planter             Planter?           @relation(fields: [planterId], references: [id])
+  subBuyerId          String?            @db.Uuid @map("sub_buyer_id")
+  subBuyer            User?              @relation("SubBuyerCredits", fields: [subBuyerId], references: [id])
+  zoneManagerId       String?            @db.Uuid @map("zone_manager_id")
+  zoneManager         ZoneManagerProfile? @relation(fields: [zoneManagerId], references: [id])
+  
+  repayments          Repayment[]
+  deductions          AutoDeduction[]
+  logs                CreditAuditLog[]
 
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  @@index([beneficiaryId, beneficiaryType])
+  @@index([status])
   @@map("credits")
 }
 
 model Repayment {
-  id          String   @id @default(uuid()) @db.Uuid
-  creditId    String   @db.Uuid @map("credit_id")
-  credit      Credit   @relation(fields: [creditId], references: [id], onDelete: Cascade)
-  amount      Float
+  id            String        @id @default(uuid()) @db.Uuid
+  creditId      String        @db.Uuid @map("credit_id")
+  credit        Credit        @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(15, 2)
+  repaidAt      DateTime      @map("repaid_at")
+  paymentMethod PaymentMethod @map("payment_method")
   
-  createdById String   @db.Uuid @map("created_by_id")
-  createdBy   User     @relation(fields: [createdById], references: [id])
+  userId        String        @db.Uuid @map("user_id")
+  user          User          @relation(fields: [userId], references: [id])
   
-  date        DateTime @default(now())
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  observations  String?       @db.Text
+  isAuto        Boolean       @default(false) @map("is_auto")
+
+  createdAt     DateTime      @default(now()) @map("created_at")
 
   @@map("repayments")
 }
@@ -645,6 +707,7 @@ model ZoneManagerProfile {
   assignments           ZoneAssignment[]
   objectives            ZoneObjective[]
   planterVisits         PlanterVisit[]
+  credits               Credit[]
   
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
@@ -758,5 +821,108 @@ model PlanterVisit {
   updatedAt             DateTime          @updatedAt @map("updated_at")
 
   @@map("planter_visits")
+}
+
+// --- Credit & Advances Models ---
+
+enum CreditType {
+  PLANTER_CAMPAGNE
+  PLANTER_INPUTS
+  PLANTER_PERSONAL
+  PLANTER_TRANSPORT
+  PLANTER_EMERGENCY
+  SUB_BUYER_FUNDS
+  SUB_BUYER_FUEL
+  SUB_BUYER_TRANSPORT
+  SUB_BUYER_MISSION
+  ZONE_MANAGER_OPS
+  ZONE_MANAGER_TRAVEL
+  ZONE_MANAGER_RECRUIT
+}
+
+enum BeneficiaryType {
+  PLANTER
+  SUB_BUYER
+  ZONE_MANAGER
+}
+
+enum CreditStatus {
+  DRAFT
+  PENDING_VALIDATION
+  APPROVED
+  ACTIVE
+  REPAID
+  OVERDUE
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MOBILE_MONEY
+  INPUTS_IN_KIND
+}
+
+model CreditCategory {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  label       String
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  credits     Credit[]
+
+  @@map("credit_categories")
+}
+
+
+model AutoDeduction {
+  id              String    @id @default(uuid()) @db.Uuid
+  creditId        String    @db.Uuid @map("credit_id")
+  credit          Credit    @relation(fields: [creditId], references: [id])
+  deliveryId      String?   @db.Uuid @map("delivery_id")
+  justificationId String?   @db.Uuid @map("justification_id")
+  purchaseId      String?   @db.Uuid @map("purchase_id")
+  purchase        Purchase? @relation(fields: [purchaseId], references: [id])
+  amountDeducted  Decimal   @db.Decimal(15, 2) @map("amount_deducted")
+  deductedAt      DateTime  @default(now()) @map("deducted_at")
+
+  @@map("auto_deductions")
+}
+
+model CreditLimit {
+  id              String          @id @default(uuid()) @db.Uuid
+  beneficiaryType BeneficiaryType @map("beneficiary_type")
+  beneficiaryId   String          @unique @db.Uuid @map("beneficiary_id")
+  maxLimit        Decimal         @db.Decimal(15, 2) @map("max_limit")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@map("credit_limits")
+}
+
+model CreditAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  creditId    String   @db.Uuid @map("credit_id")
+  credit      Credit   @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  userId      String   @db.Uuid @map("user_id")
+  action      String
+  payloadBefore Json?    @map("payload_before")
+  payloadAfter  Json?    @map("payload_after")
+  timestamp   DateTime @default(now()) @map("timestamp")
+
+  @@map("credit_audit_logs")
+}
+
+enum CocoaQualityGrade {
+  GRADE_1
+  GRADE_2
+  SOUS_GRADE
+}
+
+enum PurchaseStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
 }
 

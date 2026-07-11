@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, UserPlus, SlidersHorizontal, Eye, FileText, CheckCircle2, ShieldAlert, XCircle, LogOut, ArrowRight, Sparkles, Plus, TrendingDown, DollarSign, Award } from 'lucide-react';
 
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
+
 const MOCK_SUB_BUYERS = [
   {
     id: 'sb1',
@@ -110,15 +112,20 @@ const SubBuyersList = () => {
         }
       }));
 
-      setSubBuyers(enriched.length > 0 ? enriched : MOCK_SUB_BUYERS);
+      setSubBuyers(enriched.length > 0 ? enriched : (USE_MOCKS ? MOCK_SUB_BUYERS : []));
     } catch (err) {
-      console.warn('[SYS] Échec chargement API backend, utilisation du mock pour les sous-acheteurs.');
-      const filtered = MOCK_SUB_BUYERS.filter(sb => {
-        const matchesSearch = !search || `${sb.firstName} ${sb.lastName} ${sb.phone} ${sb.profile.purchaseZone}`.toLowerCase().includes(search.toLowerCase());
-        const matchesStatus = !statusFilter || sb.status === statusFilter;
-        return matchesSearch && matchesStatus;
-      });
-      setSubBuyers(filtered);
+      if (USE_MOCKS) {
+        console.warn('[SYS] Échec chargement API backend, utilisation du mock pour les sous-acheteurs.');
+        const filtered = MOCK_SUB_BUYERS.filter(sb => {
+          const matchesSearch = !search || `${sb.firstName} ${sb.lastName} ${sb.phone} ${sb.profile.purchaseZone}`.toLowerCase().includes(search.toLowerCase());
+          const matchesStatus = !statusFilter || sb.status === statusFilter;
+          return matchesSearch && matchesStatus;
+        });
+        setSubBuyers(filtered);
+      } else {
+        console.error('[SYS] Erreur API sous-acheteurs:', err);
+        setSubBuyers([]);
+      }
     } finally {
       setLoading(false);
     }

@@ -13,6 +13,8 @@ import {
 } from 'recharts';
 import DashboardCustomize from './DashboardCustomize';
 
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
+
 // MOCK DATA en cas d'absence de backend connecté
 const MOCK_KPIS = {
   stock: { totalKg: 45280, totalTonnes: 45.28, totalSacs: 697, value: 67920000 },
@@ -116,12 +118,20 @@ const Dashboard = () => {
       setActivities(actRes.data);
       setConfig(configRes.data);
     } catch (err) {
-      console.warn('[SYS] Échec de la récupération des données réelles du tableau de bord. Utilisation du mock.');
-      // En fallback, on utilise les mocks
-      setKpis(MOCK_KPIS);
-      setCharts(MOCK_CHARTS);
-      setAlerts(MOCK_ALERTS);
-      setActivities(MOCK_ACTIVITIES);
+      if (USE_MOCKS) {
+        console.warn('[SYS] Échec de la récupération des données réelles du tableau de bord. Utilisation du mock.');
+        setKpis(MOCK_KPIS);
+        setCharts(MOCK_CHARTS);
+        setAlerts(MOCK_ALERTS);
+        setActivities(MOCK_ACTIVITIES);
+      } else {
+        console.error('[SYS] Erreur lors du chargement des données:', err);
+        // Fallback to empty states
+        setKpis({ stock: {}, purchases: {}, sales: {}, finances: {}, actors: {} });
+        setCharts({ evolution: [], shareByStore: [], priceEvolution: [], creditEvolution: [] });
+        setAlerts([]);
+        setActivities([]);
+      }
     } finally {
       setLoading(false);
     }

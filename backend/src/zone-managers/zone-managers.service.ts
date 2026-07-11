@@ -271,11 +271,11 @@ export class ZoneManagersService {
       const purchasesAgg = await this.prisma.purchase.aggregate({
         where: {
           buyerId: { in: subBuyerIds },
-          date: { gte: obj.startDate, lte: obj.endDate },
+          createdAt: { gte: obj.startDate, lte: obj.endDate },
         },
         _sum: {
-          quantityKg: true,
-          totalAmount: true,
+          weightNetPaid: true,
+          amountGross: true,
         },
       });
 
@@ -285,7 +285,7 @@ export class ZoneManagersService {
           credit: {
             subBuyerId: { in: subBuyerIds },
           },
-          date: { gte: obj.startDate, lte: obj.endDate },
+          repaidAt: { gte: obj.startDate, lte: obj.endDate },
         },
         _sum: {
           amount: true,
@@ -297,7 +297,7 @@ export class ZoneManagersService {
         by: ['planterId'],
         where: {
           buyerId: { in: subBuyerIds },
-          date: { gte: obj.startDate, lte: obj.endDate },
+          createdAt: { gte: obj.startDate, lte: obj.endDate },
           planterId: { not: null },
         },
       });
@@ -311,11 +311,11 @@ export class ZoneManagersService {
       });
 
       // Mettre a jour l'objet
-      const achievedQuantityKg = purchasesAgg._sum.quantityKg || 0;
-      const achievedValueFCFA = purchasesAgg._sum.totalAmount || 0;
+      const achievedQuantityKg = Number(purchasesAgg._sum.weightNetPaid || 0);
+      const achievedValueFCFA = Number(purchasesAgg._sum.amountGross || 0);
       const achievedActivePlanters = activePlantersCount.length;
       const achievedNewPlanters = newPlantersCount;
-      const achievedRepaymentFCFA = repaymentsAgg._sum.amount || 0;
+      const achievedRepaymentFCFA = Number(repaymentsAgg._sum.amount || 0);
 
       const updatedObj = await this.prisma.zoneObjective.update({
         where: { id: obj.id },
@@ -404,18 +404,18 @@ export class ZoneManagersService {
     const purchasesAgg = await this.prisma.purchase.aggregate({
       where: { buyerId: { in: subBuyerIds } },
       _sum: {
-        quantityKg: true,
-        totalAmount: true,
+        weightNetPaid: true,
+        amountGross: true,
       },
     });
 
     const creditsAgg = await this.prisma.credit.aggregate({
       where: {
         subBuyerId: { in: subBuyerIds },
-        status: 'PENDING',
+        status: 'ACTIVE',
       },
       _sum: {
-        amount: true,
+        amountGranted: true,
       },
     });
 
@@ -455,17 +455,51 @@ export class ZoneManagersService {
     });
 
     const lossRate = deliveriesAgg._avg.lossPercentage || 0;
-    const avgMoisture = deliveriesAgg._avg.moistureContent || 0;
+    const avgMoisture = deliveriesAgg._avg.moistureContent || 7.5;
+
+    // Calcul du score de performance pour la fiche détaillée
+    const creditTotal = await this.prisma.credit.aggregate({
+      where: { subBuyerId: { in: subBuyerIds } },
+      _sum: { amountGranted: true },
+    }).then(res => Number(res._sum.amountGranted || 0));
+
+    const repaymentTotal = Number(repaymentsAgg._sum.amount || 0);
+    const repaymentRate = creditTotal > 0 ? (repaymentTotal / creditTotal) * 100 : 100;
+
+    const deliveriesCount = await this.prisma.subBuyerDelivery.count({
+      where: {
+        subBuyerProfileId: { in: subBuyerProfileIds },
+        status: { in: ['WEIGHED', 'VALIDATED'] },
+      },
+    });
+
+    const quantity = Number(purchasesAgg._sum.weightNetPaid || 0);
+    const scoreVolume = Math.min((quantity / 50000) * 100, 100);
+    const scoreQualite = Math.max(100 - (Math.max(avgMoisture - 7.0, 0) * 50) - (lossRate * 30), 0);
+    const scoreRemboursement = repaymentRate;
+    const scoreRecrutement = Math.min((plantersCount / 10) * 100, 100);
+    const scoreRegularite = Math.min((deliveriesCount / 10) * 100, 100);
+
+    const spg = (scoreVolume * 0.35) + (scoreQualite * 0.20) + (scoreRemboursement * 0.20) + (scoreRecrutement * 0.15) + (scoreRegularite * 0.10);
 
     return {
       subBuyersCount: subBuyers.length,
       plantersCount,
-      totalQuantityKg: purchasesAgg._sum.quantityKg || 0,
-      totalValueFCFA: purchasesAgg._sum.totalAmount || 0,
-      activeCreditsValueFCFA: creditsAgg._sum.amount || 0,
-      totalRepaymentsValueFCFA: repaymentsAgg._sum.amount || 0,
+      totalQuantityKg: quantity,
+      totalValueFCFA: Number(purchasesAgg._sum.amountGross || 0),
+      activeCreditsValueFCFA: Number(creditsAgg._sum.amountGranted || 0),
+      totalRepaymentsValueFCFA: repaymentTotal,
       lossRate,
       avgMoisture,
+      deliveriesCount,
+      performanceScore: parseFloat(spg.toFixed(2)),
+      subScores: {
+        volume: parseFloat(scoreVolume.toFixed(2)),
+        quality: parseFloat(scoreQualite.toFixed(2)),
+        repayment: parseFloat(scoreRemboursement.toFixed(2)),
+        recruitment: parseFloat(scoreRecrutement.toFixed(2)),
+        regularity: parseFloat(scoreRegularite.toFixed(2)),
+      },
     };
   }
 
@@ -493,14 +527,14 @@ export class ZoneManagersService {
       const purchasesAgg = await this.prisma.purchase.aggregate({
         where: {
           buyerId: { in: subBuyerIds },
-          date: { gte: startDate, lte: endDate },
+          createdAt: { gte: startDate, lte: endDate },
         },
         _sum: {
-          quantityKg: true,
-          totalAmount: true,
+          weightNetPaid: true,
+          amountGross: true,
         },
       });
-      const quantity = purchasesAgg._sum.quantityKg || 0;
+      const quantity = Number(purchasesAgg._sum.weightNetPaid || 0);
 
       // 2. Qualite moyenne (Humidite)
       const subBuyerProfiles = await this.prisma.subBuyerProfile.findMany({
@@ -533,7 +567,7 @@ export class ZoneManagersService {
           createdAt: { gte: startDate, lte: endDate },
         },
         _sum: {
-          amount: true,
+          amountGranted: true,
         },
       });
       const repaymentsAgg = await this.prisma.repayment.aggregate({
@@ -541,28 +575,46 @@ export class ZoneManagersService {
           credit: {
             subBuyerId: { in: subBuyerIds },
           },
-          date: { gte: startDate, lte: endDate },
+          repaidAt: { gte: startDate, lte: endDate },
         },
         _sum: {
           amount: true,
         },
       });
 
-      const creditTotal = creditsAgg._sum.amount || 0;
-      const repaymentTotal = repaymentsAgg._sum.amount || 0;
+      const creditTotal = Number(creditsAgg._sum.amountGranted || 0);
+      const repaymentTotal = Number(repaymentsAgg._sum.amount || 0);
       const repaymentRate = creditTotal > 0 ? (repaymentTotal / creditTotal) * 100 : 100;
 
-      // Calcul du Score SPG (Score de Performance Globale)
-      // Normalisation grossiere des métriques :
-      // - Volume : max à 100 000kg (score sur 100)
-      // - Qualité : 7% d'humidité = note max (100). Chaque +0.5% d'humidité retire 10 points.
-      // - Remboursement : Taux de remboursement direct
-      // - Pertes : 0% perte = note max. Chaque +0.5% de perte retire 15 points.
-      const scoreVolume = Math.min((quantity / 100000) * 100, 100);
-      const scoreQualite = Math.max(100 - (Math.max(avgMoisture - 7.0, 0) * 20), 0);
-      const scorePertes = Math.max(100 - (lossRate * 30), 0);
+      // 4. Nombre de nouveaux planteurs recrutés
+      const newPlanters = await this.prisma.planter.count({
+        where: {
+          OR: [
+            { zoneManagerId: mgr.userId },
+            { subBuyerId: { in: subBuyerIds } },
+          ],
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      });
 
-      const spg = (scoreVolume * 0.4) + (scoreQualite * 0.3) + (repaymentRate * 0.2) + (scorePertes * 0.1);
+      // 5. Régularité des livraisons (Nombre total de livraisons effectuées)
+      const deliveriesCount = await this.prisma.subBuyerDelivery.count({
+        where: {
+          subBuyerProfileId: { in: subBuyerProfileIds },
+          status: { in: ['WEIGHED', 'VALIDATED'] },
+          deliveryDate: { gte: startDate, lte: endDate },
+        },
+      });
+
+      // Calcul des 5 notes intermédiaires sur 100
+      const scoreVolume = Math.min((quantity / 50000) * 100, 100);
+      const scoreQualite = Math.max(100 - (Math.max(avgMoisture - 7.0, 0) * 50) - (lossRate * 30), 0);
+      const scoreRemboursement = repaymentRate;
+      const scoreRecrutement = Math.min((newPlanters / 10) * 100, 100);
+      const scoreRegularite = Math.min((deliveriesCount / 10) * 100, 100);
+
+      // Score de Performance Globale (SPG) pondéré
+      const spg = (scoreVolume * 0.35) + (scoreQualite * 0.20) + (scoreRemboursement * 0.20) + (scoreRecrutement * 0.15) + (scoreRegularite * 0.10);
 
       leaderboard.push({
         managerId: mgr.id,
@@ -573,6 +625,15 @@ export class ZoneManagersService {
           averageMoisture: parseFloat(avgMoisture.toFixed(2)),
           repaymentRate: parseFloat(repaymentRate.toFixed(2)),
           lossPercentage: parseFloat(lossRate.toFixed(2)),
+          newPlantersCount: newPlanters,
+          deliveriesCount,
+        },
+        subScores: {
+          volume: parseFloat(scoreVolume.toFixed(2)),
+          quality: parseFloat(scoreQualite.toFixed(2)),
+          repayment: parseFloat(scoreRemboursement.toFixed(2)),
+          recruitment: parseFloat(scoreRecrutement.toFixed(2)),
+          regularity: parseFloat(scoreRegularite.toFixed(2)),
         },
       });
     }

@@ -4,6 +4,18 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { DeviceType } from '@prisma/client';
+import { verifySync, generateSecret, generateURI, NobleCryptoPlugin } from 'otplib';
+
+const cryptoPlugin = new NobleCryptoPlugin();
+
+const authenticator = {
+  generateSecret: () => generateSecret({ crypto: cryptoPlugin }),
+  keyuri: (label: string, issuer: string, secret: string) => 
+    generateURI({ label, issuer, secret }),
+  verify: (options: { token: string; secret: string }) => 
+    verifySync({ token: options.token, secret: options.secret, crypto: cryptoPlugin }).valid,
+};
+import { toDataURL } from 'qrcode';
 
 @Injectable()
 export class AuthService {
@@ -279,5 +291,35 @@ export class AuthService {
     });
 
     await this.logAudit(user.id, 'PASSWORD_RESET_SUCCESS', 'auth', {}, ip, ua);
+  }
+
+  // --- 2FA Methods ---
+  async generateTwoFactorAuthenticationSecret(user: any) {
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(user.email || user.phone, 'AgriFlow', secret);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { twoFactorSecret: secret },
+    });
+
+    return {
+      secret,
+      qrCodeUrl: await toDataURL(otpauthUrl),
+    };
+  }
+
+  async turnOnTwoFactorAuthentication(userId: string, code: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const isCodeValid = authenticator.verify({ token: code, secret: user.twoFactorSecret });
+
+    if (!isCodeValid) {
+      throw new UnauthorizedException('Code 2FA invalide');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: true },
+    });
   }
 }

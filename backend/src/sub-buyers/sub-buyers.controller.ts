@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, HttpCode, BadRequestException } from '@nestjs/common';
 import { SubBuyersService } from './sub-buyers.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -131,6 +131,3 @@ export class SubBuyersController {
   }
 }
 
-// Exception definition wrapper for compilation if not imported
-import { BadRequestException as NestBadRequestException } from '@nestjs/common';
-const BadRequestException = NestBadRequestException;

@@ -18,6 +18,7 @@ async function main() {
   await prisma.stockMovement.deleteMany({});
   await prisma.repayment.deleteMany({});
   await prisma.credit.deleteMany({});
+  await prisma.creditCategory.deleteMany({});
   await prisma.purchase.deleteMany({});
   await prisma.sale.deleteMany({});
 
@@ -44,6 +45,24 @@ async function main() {
     });
   }
   console.log('[SEED] Rôles configurés.');
+
+  // 1b. Catégories de Crédit
+  const categories = [
+    { code: 'PLANTER_CAMPAGNE', label: 'Avance de campagne' },
+    { code: 'PLANTER_INPUTS', label: "Achat d'intrants" },
+    { code: 'PLANTER_PERSONAL', label: 'Prêt personnel' },
+    { code: 'SUB_BUYER_FUNDS', label: "Fonds d'achat" },
+    { code: 'ZONE_MANAGER_OPS', label: 'Fonctionnement' }
+  ];
+  const dbCategories: any = {};
+  for (const cat of categories) {
+    dbCategories[cat.code] = await prisma.creditCategory.upsert({
+      where: { code: cat.code },
+      update: {},
+      create: cat,
+    });
+  }
+  console.log('[SEED] Catégories de crédit créées.');
 
   // 2. Magasins (Stores)
   const storesData = [
@@ -362,14 +381,29 @@ async function main() {
 
       const p = await prisma.purchase.create({
         data: {
+          purchaseNumber: `ACH-${i}-${j}-${Math.floor(Math.random() * 100000)}`,
+          campaign: '2025/2026',
           planterId: planter.id,
           buyerId,
           storeId,
-          quantityKg,
           bagCount,
+          packagingType: 'JUTE',
+          weightGross: quantityKg + bagCount,
+          weightBags: bagCount,
+          weightNet: quantityKg,
+          moistureRate: 7.5,
+          impurityRate: 0.8,
+          moldyRate: 0.2,
+          slatyRate: 0.5,
+          insectRate: 0.0,
+          grainage: 95,
+          weightRefactionKg: 0.0,
+          weightNetPaid: quantityKg,
           pricePerKg,
-          totalAmount,
-          date,
+          amountGross: totalAmount,
+          amountNetPaid: totalAmount,
+          status: 'PAID',
+          createdAt: date,
         },
       });
 
@@ -429,12 +463,19 @@ async function main() {
 
       const credit = await prisma.credit.create({
         data: {
-          amount,
-          interestRate: 0.0,
+          creditNumber: `CR-${i}-${Math.floor(Math.random() * 100000)}`,
+          beneficiaryType: 'PLANTER',
+          beneficiaryId: planter.id,
+          categoryId: dbCategories['PLANTER_INPUTS'].id,
+          amountGranted: amount,
+          balance: amount,
           dueDate,
-          status: 'PENDING',
+          status: 'ACTIVE',
           planterId: planter.id,
           createdById: compUser.id,
+          grantedAt: date,
+          paymentMethod: 'CASH',
+          sourceAccount: 'Caisse Centrale',
           createdAt: date,
         },
       });
@@ -444,19 +485,22 @@ async function main() {
         const isPaid = Math.random() > 0.3;
         const repaymentAmount = isPaid ? amount : amount * 0.5;
         
-        const rep = await prisma.repayment.create({
+        await prisma.repayment.create({
           data: {
             creditId: credit.id,
             amount: repaymentAmount,
-            createdById: compUser.id,
-            date: new Date(date.getTime() + 10 * 24 * 60 * 60 * 1000), // 10 jours après
+            userId: compUser.id,
+            repaidAt: new Date(date.getTime() + 10 * 24 * 60 * 60 * 1000), // 10 jours après
+            paymentMethod: 'CASH',
           },
         });
 
         await prisma.credit.update({
           where: { id: credit.id },
           data: {
-            status: isPaid ? 'PAID' : 'PARTIALLY_PAID',
+            status: isPaid ? 'REPAID' : 'ACTIVE',
+            amountRepaid: repaymentAmount,
+            balance: amount - repaymentAmount,
           },
         });
       }
@@ -483,12 +527,19 @@ async function main() {
   
   const lateCredit = await prisma.credit.create({
     data: {
-      amount: 120000,
-      interestRate: 0.0,
+      creditNumber: `CR-LATE-${Math.floor(Math.random() * 100000)}`,
+      beneficiaryType: 'PLANTER',
+      beneficiaryId: latePlanter.id,
+      categoryId: dbCategories['PLANTER_INPUTS'].id,
+      amountGranted: 120000,
+      balance: 120000,
       dueDate: lateDueDate,
       status: 'OVERDUE',
       planterId: latePlanter.id,
       createdById: compUser.id,
+      grantedAt: lateDate,
+      paymentMethod: 'CASH',
+      sourceAccount: 'Caisse Centrale',
       createdAt: lateDate,
     },
   });

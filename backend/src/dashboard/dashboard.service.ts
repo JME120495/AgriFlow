@@ -120,7 +120,7 @@ export class DashboardService {
 
     // Construction du filtre global pour les requêtes
     const purchaseWhere: any = {
-      date: { gte: startDate, lte: endDate },
+      createdAt: { gte: startDate, lte: endDate },
     };
     const salesWhere: any = {
       date: { gte: startDate, lte: endDate },
@@ -129,7 +129,7 @@ export class DashboardService {
       createdAt: { gte: startDate, lte: endDate },
     };
     const repaymentWhere: any = {
-      date: { gte: startDate, lte: endDate },
+      repaidAt: { gte: startDate, lte: endDate },
     };
 
     // Application des filtres de sécurité & filtres de requêtes
@@ -189,12 +189,12 @@ export class DashboardService {
     // 2. Achats sur la période
     const purchases = await this.prisma.purchase.findMany({
       where: purchaseWhere,
-      select: { quantityKg: true, totalAmount: true },
+      select: { weightNetPaid: true, amountGross: true },
     });
     
     const purchasesCount = purchases.length;
-    const purchasesQtyKg = purchases.reduce((acc, p) => acc + p.quantityKg, 0);
-    const purchasesAmount = purchases.reduce((acc, p) => acc + p.totalAmount, 0);
+    const purchasesQtyKg = purchases.reduce((acc, p) => acc + p.weightNetPaid, 0);
+    const purchasesAmount = purchases.reduce((acc, p) => acc + p.amountGross, 0);
 
     // 3. Ventes sur la période (Uniquement Directeur & Comptable ou Global)
     let salesQtyKg = 0;
@@ -211,15 +211,15 @@ export class DashboardService {
     // 4. Trésorerie estimée (Modèle de flux de caisse virtuel basé sur transactions)
     // Caisse = Initial 10M - Achats - Crédits décaissés + Remboursements encaissés
     // Banque = Initial 50M + Ventes - Crédits décaissés Banque
-    const allPurchasesSum = await this.prisma.purchase.aggregate({ _sum: { totalAmount: true } });
+    const allPurchasesSum = await this.prisma.purchase.aggregate({ _sum: { amountGross: true } });
     const allSalesSum = await this.prisma.sale.aggregate({ _sum: { totalAmount: true } });
-    const allCreditsSum = await this.prisma.credit.aggregate({ _sum: { amount: true } });
+    const allCreditsSum = await this.prisma.credit.aggregate({ _sum: { amountGranted: true } });
     const allRepaymentsSum = await this.prisma.repayment.aggregate({ _sum: { amount: true } });
 
-    const totalPurchasesVal = allPurchasesSum._sum.totalAmount || 0;
+    const totalPurchasesVal = allPurchasesSum._sum.amountGross || 0;
     const totalSalesVal = allSalesSum._sum.totalAmount || 0;
-    const totalCreditsVal = allCreditsSum._sum.amount || 0;
-    const totalRepaymentsVal = allRepaymentsSum._sum.amount || 0;
+    const totalCreditsVal = Number(allCreditsSum._sum.amountGranted || 0);
+    const totalRepaymentsVal = Number(allRepaymentsSum._sum.amount || 0);
 
     const soldeCaisse = 10000000 - totalPurchasesVal - (totalCreditsVal * 0.4) + totalRepaymentsVal;
     const soldeBancaire = 50000000 + totalSalesVal - (totalCreditsVal * 0.6);
@@ -231,7 +231,7 @@ export class DashboardService {
     // 5. Crédits en cours
     const activeCredits = await this.prisma.credit.findMany({
       where: {
-        status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
+        status: { in: ['ACTIVE', 'OVERDUE'] },
         ...(sec.userId ? { subBuyerId: sec.userId } : {}),
         ...(sec.allowedUserIds.length > 0 ? { subBuyerId: { in: sec.allowedUserIds } } : {}),
       },
@@ -240,13 +240,13 @@ export class DashboardService {
     
     let totalCreditsEnCours = 0;
     activeCredits.forEach(c => {
-      const repaid = c.repayments.reduce((acc, r) => acc + r.amount, 0);
-      totalCreditsEnCours += (c.amount - repaid);
+      const repaid = c.repayments.reduce((acc, r) => acc + Number(r.amount), 0);
+      totalCreditsEnCours += (Number(c.amountGranted) - repaid);
     });
 
     const repaymentsToday = await this.prisma.repayment.aggregate({
       where: {
-        date: { gte: new Date(new Date().setHours(0,0,0,0)) },
+        repaidAt: { gte: new Date(new Date().setHours(0,0,0,0)) },
         ...(sec.userId ? { createdById: sec.userId } : {}),
         ...(sec.allowedUserIds.length > 0 ? { createdById: { in: sec.allowedUserIds } } : {}),
       },
@@ -309,7 +309,7 @@ export class DashboardService {
     const { period, storeId, userId, planterId, startDate: sD, endDate: eD } = query;
     const { startDate, endDate } = this.getDateRange(period, sD, eD);
 
-    const purchaseWhere: any = { date: { gte: startDate, lte: endDate } };
+    const purchaseWhere: any = { createdAt: { gte: startDate, lte: endDate } };
     const salesWhere: any = { date: { gte: startDate, lte: endDate } };
     
     if (sec.storeId) purchaseWhere.storeId = sec.storeId;
@@ -325,7 +325,7 @@ export class DashboardService {
     // 1. Évolution des Achats & Ventes (Groupés par jour)
     const purchases = await this.prisma.purchase.findMany({
       where: purchaseWhere,
-      orderBy: { date: 'asc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     const sales = (sec.role === 'DIRECTEUR' || sec.role === 'COMPTABLE' || sec.role === 'ADMIN') 
@@ -337,10 +337,10 @@ export class DashboardService {
     
     // Remplir avec les achats
     purchases.forEach(p => {
-      const day = p.date.toISOString().split('T')[0];
+      const day = p.createdAt.toISOString().split('T')[0];
       const existing = dateMap.get(day) || { date: day, achats: 0, ventes: 0, achatsKg: 0, ventesKg: 0 };
-      existing.achats += p.totalAmount;
-      existing.achatsKg += p.quantityKg;
+      existing.achats += p.amountGross;
+      existing.achatsKg += p.weightNetPaid;
       dateMap.set(day, existing);
     });
 
@@ -365,15 +365,15 @@ export class DashboardService {
     storePurchases.forEach(p => {
       const storeName = p.store.name;
       const existing = storeMap.get(storeName) || { name: storeName, valeur: 0, quantite: 0 };
-      existing.valeur += p.totalAmount;
-      existing.quantite += p.quantityKg;
+      existing.valeur += p.amountGross;
+      existing.quantite += p.weightNetPaid;
       storeMap.set(storeName, existing);
     });
     const shareByStore = Array.from(storeMap.values());
 
     // 3. Évolution du Prix Moyen d'achat du cacao
     const priceEvolution = evolutionData.map(d => {
-      const dayPurchases = purchases.filter(p => p.date.toISOString().split('T')[0] === d.date);
+      const dayPurchases = purchases.filter(p => p.createdAt.toISOString().split('T')[0] === d.date);
       if (dayPurchases.length === 0) return { date: d.date, prixMoyen: 0 };
       const sumPrices = dayPurchases.reduce((acc, p) => acc + p.pricePerKg, 0);
       return {
@@ -394,11 +394,11 @@ export class DashboardService {
 
     const repayments = await this.prisma.repayment.findMany({
       where: {
-        date: { gte: startDate, lte: endDate },
+        repaidAt: { gte: startDate, lte: endDate },
         ...(sec.userId ? { createdById: sec.userId } : {}),
         ...(sec.allowedUserIds.length > 0 ? { createdById: { in: sec.allowedUserIds } } : {}),
       },
-      orderBy: { date: 'asc' },
+      orderBy: { repaidAt: 'asc' },
     });
 
     const creditFlowMap = new Map<string, { date: string; credits: number; remboursements: number }>();
@@ -406,14 +406,14 @@ export class DashboardService {
     credits.forEach(c => {
       const day = c.createdAt.toISOString().split('T')[0];
       const existing = creditFlowMap.get(day) || { date: day, credits: 0, remboursements: 0 };
-      existing.credits += c.amount;
+      existing.credits += Number(c.amountGranted);
       creditFlowMap.set(day, existing);
     });
 
     repayments.forEach(r => {
-      const day = r.date.toISOString().split('T')[0];
+      const day = r.repaidAt.toISOString().split('T')[0];
       const existing = creditFlowMap.get(day) || { date: day, credits: 0, remboursements: 0 };
-      existing.remboursements += r.amount;
+      existing.remboursements += Number(r.amount);
       creditFlowMap.set(day, existing);
     });
 

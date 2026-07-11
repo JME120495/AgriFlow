@@ -158,7 +158,7 @@ export class PlantersService {
     // Calcul des KPIs cumulés
     const purchases = await this.prisma.purchase.findMany({
       where: { planterId: id },
-      select: { quantityKg: true, totalAmount: true, date: true },
+      select: { weightNetPaid: true, amountGross: true, createdAt: true },
     });
 
     const credits = await this.prisma.credit.findMany({
@@ -171,21 +171,21 @@ export class PlantersService {
       select: { amount: true, date: true },
     });
 
-    const totalSoldKg = purchases.reduce((acc, p) => acc + p.quantityKg, 0);
-    const totalPurchasesAmount = purchases.reduce((acc, p) => acc + p.totalAmount, 0);
+    const totalSoldKg = purchases.reduce((acc, p) => acc + p.weightNetPaid, 0);
+    const totalPurchasesAmount = purchases.reduce((acc, p) => acc + p.amountGross, 0);
     const totalPaymentsAmount = payments.reduce((acc, p) => acc + p.amount, 0);
-    const totalCreditsGranted = credits.reduce((acc, c) => acc + c.amount, 0);
+    const totalCreditsGranted = credits.reduce((acc, c) => acc + Number(c.amountGranted), 0);
 
     let totalCreditsEnCours = 0;
     credits.forEach(c => {
-      const repaid = c.repayments.reduce((acc, r) => acc + r.amount, 0);
-      if (c.status !== 'PAID') {
-        totalCreditsEnCours += (c.amount - repaid);
+      const repaid = c.repayments.reduce((acc, r) => acc + Number(r.amount), 0);
+      if (c.status !== 'REPAID') {
+        totalCreditsEnCours += (Number(c.amountGranted) - repaid);
       }
     });
 
     const lastDelivery = purchases.length > 0
-      ? purchases.reduce((max, p) => p.date > max.date ? p : max, purchases[0])
+      ? purchases.reduce((max, p) => p.createdAt > max.createdAt ? p : max, purchases[0])
       : null;
 
     const lastPayment = payments.length > 0
@@ -201,7 +201,7 @@ export class PlantersService {
         totalCreditsGranted,
         creditsRemaining: totalCreditsEnCours,
         deliveriesCount: purchases.length,
-        lastDeliveryDate: lastDelivery ? lastDelivery.date : null,
+        lastDeliveryDate: lastDelivery ? lastDelivery.createdAt : null,
         lastPaymentDate: lastPayment ? lastPayment.date : null,
       },
     };
@@ -290,7 +290,7 @@ export class PlantersService {
   async getHistory(id: string) {
     const purchases = await this.prisma.purchase.findMany({
       where: { planterId: id },
-      orderBy: { date: 'desc' },
+      orderBy: { createdAt: 'desc' },
       include: { store: { select: { name: true } } },
     });
 
@@ -313,14 +313,34 @@ export class PlantersService {
     const planter = await this.prisma.planter.findUnique({ where: { id } });
     if (!planter) throw new NotFoundException('Planteur non trouvé');
 
+    const category = await this.prisma.creditCategory.findFirst({
+      where: { code: 'AVANCE_CAMPAGNE' },
+    }) || await this.prisma.creditCategory.findFirst();
+
+    if (!category) throw new BadRequestException('Aucune catégorie de crédit disponible.');
+
+    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '').substring(0, 6); // YYYYMM
+    const count = await this.prisma.credit.count({
+      where: { creditNumber: { startsWith: `CRE-${dateStr}` } },
+    });
+    const seq = (count + 1).toString().padStart(4, '0');
+    const creditNumber = `CRE-${dateStr}-${seq}`;
+
     const credit = await this.prisma.credit.create({
       data: {
-        planterId: id,
-        amount: parseFloat(dto.amount),
-        interestRate: parseFloat(dto.interest_rate) || 0.0,
+        creditNumber,
+        beneficiaryType: 'PLANTER',
+        beneficiaryId: id,
+        categoryId: category.id,
+        amountGranted: parseFloat(dto.amount),
+        balance: parseFloat(dto.amount),
+        grantedAt: new Date(),
         dueDate: new Date(dto.due_date),
-        status: 'PENDING',
+        paymentMethod: 'CASH',
+        sourceAccount: 'CAISSE_CENTRALE',
+        status: 'ACTIVE',
         createdById: userId,
+        planterId: id,
       },
     });
 
@@ -336,10 +356,10 @@ export class PlantersService {
     });
 
     if (!credit) throw new NotFoundException('Crédit non trouvé');
-    if (credit.status === 'PAID') throw new BadRequestException('Ce crédit est déjà entièrement remboursé');
+    if (credit.status === 'REPAID') throw new BadRequestException('Ce crédit est déjà entièrement remboursé');
 
-    const alreadyRepaid = credit.repayments.reduce((acc, r) => acc + r.amount, 0);
-    const remaining = credit.amount - alreadyRepaid;
+    const alreadyRepaid = Number(credit.amountRepaid);
+    const remaining = Number(credit.balance);
     const repaymentAmount = Math.min(parseFloat(dto.amount), remaining);
 
     const repayment = await this.prisma.$transaction(async (tx) => {
@@ -347,16 +367,23 @@ export class PlantersService {
         data: {
           creditId: dto.credit_id,
           amount: repaymentAmount,
-          createdById: userId,
+          repaidAt: new Date(),
+          paymentMethod: 'CASH',
+          userId,
         },
       });
 
-      const totalRepaid = alreadyRepaid + repaymentAmount;
-      const newStatus = totalRepaid >= credit.amount ? 'PAID' : 'PARTIALLY_PAID';
+      const newAmountRepaid = alreadyRepaid + repaymentAmount;
+      const newBalance = remaining - repaymentAmount;
+      const newStatus = newBalance <= 0 ? 'REPAID' : credit.status;
 
       await tx.credit.update({
         where: { id: dto.credit_id },
-        data: { status: newStatus },
+        data: { 
+          amountRepaid: newAmountRepaid,
+          balance: newBalance,
+          status: newStatus 
+        },
       });
 
       return rep;
@@ -383,16 +410,16 @@ export class PlantersService {
   async getStats(id: string) {
     const purchases = await this.prisma.purchase.findMany({
       where: { planterId: id },
-      orderBy: { date: 'asc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     // Agrégation par mois
     const monthlyMap = new Map<string, { month: string; quantity: number; amount: number }>();
     purchases.forEach(p => {
-      const month = p.date.toISOString().substring(0, 7); // YYYY-MM
+      const month = p.createdAt.toISOString().substring(0, 7); // YYYY-MM
       const existing = monthlyMap.get(month) || { month, quantity: 0, amount: 0 };
-      existing.quantity += p.quantityKg;
-      existing.amount += p.totalAmount;
+      existing.quantity += p.weightNetPaid;
+      existing.amount += p.amountGross;
       monthlyMap.set(month, existing);
     });
 
