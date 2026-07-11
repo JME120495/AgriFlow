@@ -562,6 +562,94 @@ async function main() {
     },
   });
 
+  // Seed des règles de réfaction par défaut
+  const defaultRules = [
+    {
+      code: 'HUMIDITE',
+      name: 'Humidité du cacao',
+      threshold: 8.0,
+      penaltyType: 'PERCENT_WEIGHT',
+      penaltyValue: 1.0,
+      formula: 'metrics.moistureRate > 10.0 ? (metrics.moistureRate - 8.0) * 2.0 : (metrics.moistureRate - 8.0)',
+      maxLimit: 12.0,
+    },
+    {
+      code: 'DECHETS',
+      name: 'Taux de déchets et impuretés',
+      threshold: 1.0,
+      penaltyType: 'PERCENT_WEIGHT',
+      penaltyValue: 1.0,
+      formula: 'metrics.impurityRate - 1.0',
+      maxLimit: 5.0,
+    },
+    {
+      code: 'MOISIES',
+      name: 'Fèves moisies',
+      threshold: 3.0,
+      penaltyType: 'PERCENT_WEIGHT',
+      penaltyValue: 0.5,
+      formula: '(metrics.moldyRate - 3.0) * 0.5',
+      maxLimit: 10.0,
+    },
+  ];
+
+  for (const r of defaultRules) {
+    const existing = await prisma.refactionRule.findFirst({
+      where: { code: r.code, campaign: '2025/2026', storeId: null, clientExport: null },
+    });
+    if (!existing) {
+      await prisma.refactionRule.create({
+        data: {
+          code: r.code,
+          name: r.name,
+          threshold: r.threshold,
+          penaltyType: r.penaltyType as any,
+          penaltyValue: r.penaltyValue,
+          formula: r.formula,
+          maxLimit: r.maxLimit,
+          campaign: '2025/2026',
+          isActive: true,
+        },
+      });
+    }
+  }
+  console.log('[SEED] Règles de réfaction par défaut créées.');
+
+  // Créer des contrôles qualité pour les achats existants
+  const allPurchases = await prisma.purchase.findMany({ take: 10 });
+  for (const p of allPurchases) {
+    const hasQc = await prisma.qualityControl.findUnique({
+      where: { purchaseId: p.id },
+    });
+    if (!hasQc) {
+      await prisma.qualityControl.create({
+        data: {
+          controlNumber: `QC-${p.purchaseNumber.replace('ACH-', '')}`,
+          status: 'VALIDATED',
+          purchaseId: p.id,
+          moistureRate: p.moistureRate,
+          impurityRate: p.impurityRate,
+          moldyRate: p.moldyRate,
+          slatyRate: p.slatyRate,
+          insectRate: p.insectRate,
+          brokenRate: 1.0,
+          flatRate: 1.0,
+          germinatedRate: 0.0,
+          grainage: p.grainage,
+          wetBagsCount: 0,
+          smell: 'CONFORME',
+          color: 'CONFORME',
+          bagCondition: 'PROPRE',
+          weightRefactionKg: p.weightRefactionKg,
+          financialLossFCFA: p.weightRefactionKg * p.pricePerKg,
+          controlledById: p.buyerId,
+          validatedById: p.buyerId,
+          createdAt: p.createdAt,
+        },
+      });
+    }
+  }
+  console.log('[SEED] Contrôles qualité de test générés.');
   console.log('[SEED] Alertes système générées.');
   console.log('[SEED] Base de données de test peuplée avec succès !');
 }

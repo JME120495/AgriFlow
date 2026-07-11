@@ -88,6 +88,11 @@ model User {
   // Relations Module 5 (Chefs de zone)
   zoneManagerProfile  ZoneManagerProfile?
   
+  // Relations Module 8
+  validatedQualityControls QualityControl[] @relation("ValidatedControls")
+  controlledQualityControls QualityControl[] @relation("ControlledBy")
+  qualityControlHistories   QualityControlHistory[]
+  
   createdAt           DateTime       @default(now()) @map("created_at")
   updatedAt           DateTime       @updatedAt @map("updated_at")
 
@@ -142,6 +147,7 @@ model Store {
   
   // Relations Module 4
   subBuyerDeliveries SubBuyerDelivery[]
+  refactionRules     RefactionRule[]
   
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -291,6 +297,7 @@ model Purchase {
   delivery            SubBuyerDelivery? @relation("DeliveryPurchases", fields: [deliveryId], references: [id])
   advanceJustifications SubBuyerAdvanceJustification[]
   deductions          AutoDeduction[]
+  qualityControl      QualityControl?
 
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
@@ -924,5 +931,118 @@ enum PurchaseStatus {
   PENDING_PAYMENT
   PAID
   CANCELLED
+}
+
+enum QualityControlStatus {
+  DRAFT
+  PENDING_VALIDATION
+  VALIDATED
+  REJECTED
+  REDO
+}
+
+enum RefactionPenaltyType {
+  WEIGHT_KG
+  PERCENT_WEIGHT
+  AMOUNT_FCFA
+  REJECT
+}
+
+model RefactionRule {
+  id              String               @id @default(uuid()) @db.Uuid
+  code            String               // ex: "HUMIDITE", "DECHETS"
+  name            String
+  isActive        Boolean              @default(true) @map("is_active")
+  threshold       Float                // Valeur seuil (ex: 8.0)
+  penaltyType     RefactionPenaltyType @map("penalty_type")
+  penaltyValue    Float                @map("penalty_value")
+  formula         String?              // Formule JS/JSON-logic pour calcul dynamique
+  maxLimit        Float?               @map("max_limit") // Limite critique de rejet
+  
+  // Portée / Ciblage
+  campaign        String?              // ex: "2025/2026"
+  storeId         String?              @db.Uuid @map("store_id")
+  store           Store?               @relation(fields: [storeId], references: [id])
+  clientExport    String?              @map("client_export") // ex: "Barry Callebaut"
+  
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@map("refaction_rules")
+}
+
+model QualityControl {
+  id                  String               @id @default(uuid()) @db.Uuid
+  controlNumber       String               @unique @map("control_number") // QC-YYYYMM-XXXX
+  status              QualityControlStatus @default(VALIDATED)
+  
+  // Relations d'achat
+  purchaseId          String               @unique @db.Uuid @map("purchase_id")
+  purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  
+  // Métriques mesurées
+  moistureRate        Float                @map("moisture_rate")
+  impurityRate        Float                @map("impurity_rate")
+  moldyRate           Float                @map("moldy_rate")
+  slatyRate           Float                @map("slaty_rate")
+  insectRate          Float                @map("insect_rate")
+  brokenRate          Float                @map("broken_rate")
+  flatRate            Float                @map("flat_rate")
+  germinatedRate      Float                @map("germinated_rate")
+  grainage            Int
+  wetBagsCount        Int                  @default(0) @map("wet_bags_count")
+  
+  // Aspects sensoriels
+  smell               String               @default("CONFORME") // CONFORME, MOISI, FUME
+  color               String               @default("CONFORME") // CONFORME, TERNE, ARDOISEE
+  bagCondition        String               @default("PROPRE")    // PROPRE, HUMIDE, DECHIRE
+  observations        String?              @db.Text
+  
+  // Résultats des calculs
+  weightRefactionKg   Float                @default(0.0) @map("weight_refaction_kg")
+  financialLossFCFA   Float                @default(0.0) @map("financial_loss_fcfa") // Estimation perte financière
+  
+  // Fichiers & Audit
+  attachments         QualityAttachment[]
+  histories           QualityControlHistory[]
+  
+  // Validateur / Contrôleur
+  validatedById       String?              @db.Uuid @map("validated_by_id")
+  validatedBy         User?                @relation("ValidatedControls", fields: [validatedById], references: [id])
+  controlledById      String               @db.Uuid @map("controlled_by_id")
+  controlledBy        User                 @relation("ControlledBy", fields: [controlledById], references: [id])
+  
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  @@index([createdAt])
+  @@index([status])
+  @@map("quality_controls")
+}
+
+model QualityAttachment {
+  id               String         @id @default(uuid()) @db.Uuid
+  qualityControlId String         @db.Uuid @map("quality_control_id")
+  qualityControl   QualityControl @relation(fields: [qualityControlId], references: [id], onDelete: Cascade)
+  fileName         String         @map("file_name")
+  fileUrl          String         @map("file_url")
+  fileType         String         @map("file_type") // IMAGE, VIDEO, PDF
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@map("quality_attachments")
+}
+
+model QualityControlHistory {
+  id               String               @id @default(uuid()) @db.Uuid
+  qualityControlId String               @db.Uuid @map("quality_control_id")
+  qualityControl   QualityControl       @relation(fields: [qualityControlId], references: [id], onDelete: Cascade)
+  statusBefore     QualityControlStatus @map("status_before")
+  statusAfter      QualityControlStatus @map("status_after")
+  comment          String?              @db.Text
+  userId           String               @db.Uuid @map("user_id")
+  user             User                 @relation(fields: [userId], references: [id])
+  createdAt        DateTime             @default(now()) @map("created_at")
+
+  @@map("quality_control_histories")
 }
 

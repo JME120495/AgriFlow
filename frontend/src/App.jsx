@@ -20,6 +20,9 @@ import CreditsList from './pages/Credits/CreditsList';
 import CreditDetails from './pages/Credits/CreditDetails';
 import PurchasesList from './pages/Purchases/PurchasesList';
 import PurchaseForm from './pages/Purchases/PurchaseForm';
+import QualityControlsList from './pages/Purchases/QualityControlsList';
+import QualityControlForm from './pages/Purchases/QualityControlForm';
+import RefactionRulesConfig from './pages/Admin/RefactionRulesConfig';
 
 // Initialiser le WebSocket
 const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:3000', {
@@ -193,6 +196,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <PurchaseForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quality-controls"
+            element={
+              <ProtectedRoute>
+                <QualityControlsList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quality-controls/rules"
+            element={
+              <ProtectedRoute>
+                <RefactionRulesConfig />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/purchases/:purchaseId/quality"
+            element={
+              <ProtectedRoute>
+                <QualityControlForm />
               </ProtectedRoute>
             }
           />

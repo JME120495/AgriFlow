@@ -178,6 +178,13 @@ const PurchasesList = () => {
                         </span>
                       </td>
                       <td className="p-5 text-right flex justify-end gap-2">
+                        <button
+                          onClick={() => navigate(`/purchases/${p.id}/quality`)}
+                          title="Contrôle Qualité"
+                          className="p-2 bg-teal-500/10 text-teal-400 hover:bg-teal-500 hover:text-white rounded-lg transition-all"
+                        >
+                          <Award size={16} />
+                        </button>
                         {p.status === 'PENDING_PAYMENT' && (
                           <button
                             onClick={() => handlePay(p.id)}

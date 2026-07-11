@@ -177,8 +177,11 @@ const Dashboard = () => {
           <nav className="hidden md:flex gap-1 text-sm font-medium text-slate-400">
             <Link to="/dashboard" className="px-3 py-1.5 text-white bg-slate-800 rounded-lg">Tableau de bord</Link>
             <Link to="/planters" className="px-3 py-1.5 hover:text-white transition-colors">Planteurs</Link>
-            {(authUser?.role?.name === 'ADMIN' || authUser?.role?.name === 'DIRECTEUR') && (
+            <Link to="/purchases" className="px-3 py-1.5 hover:text-white transition-colors">Achats</Link>
+            <Link to="/quality-controls" className="px-3 py-1.5 hover:text-white transition-colors">Qualité</Link>
+            {(authUser?.role?.name === 'ADMIN' || authUser?.role?.name === 'DIRECTEUR' || authUser?.role?.name === 'RESPONSABLE_QUALITE') && (
               <>
+                <Link to="/quality-controls/rules" className="px-3 py-1.5 hover:text-white transition-colors">Règles Qualité</Link>
                 <Link to="/admin/users" className="px-3 py-1.5 hover:text-white transition-colors">Collaborateurs</Link>
                 <Link to="/admin/permissions" className="px-3 py-1.5 hover:text-white transition-colors">Permissions</Link>
               </>

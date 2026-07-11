@@ -14,6 +14,7 @@ import { ExportsModule } from './exports/exports.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CreditsModule } from './credits/credits.module';
 import { PurchasesModule } from './purchases/purchases.module';
+import { QualityControlsModule } from './quality-controls/quality-controls.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
@@ -40,6 +41,7 @@ import { join } from 'path';
     NotificationsModule,
     CreditsModule,
     PurchasesModule,
+    QualityControlsModule,
   ],
   providers: [
     {
