@@ -85,6 +85,9 @@ model User {
   validatedExpenses   SubBuyerExpense[]  @relation("ExpenseValidator")
   weighedDeliveries   SubBuyerDelivery[] @relation("DeliveryWeigher")
   
+  // Relations Module 5 (Chefs de zone)
+  zoneManagerProfile  ZoneManagerProfile?
+  
   createdAt           DateTime       @default(now()) @map("created_at")
   updatedAt           DateTime       @updatedAt @map("updated_at")
 
@@ -223,6 +226,7 @@ model Planter {
   purchases   Purchase[]
   credits     Credit[]
   payments    Payment[]
+  visits      PlanterVisit[]
   
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
@@ -618,5 +622,141 @@ model SubBuyerLedger {
   createdAt               DateTime          @default(now()) @map("created_at")
 
   @@map("sub_buyer_ledgers")
+}
+
+// ==========================================
+// Module 5 : Gestion des Chefs de Zone
+// ==========================================
+
+// Extension du Profil Utilisateur pour Chef de Zone
+model ZoneManagerProfile {
+  id                    String            @id @default(uuid()) @db.Uuid
+  userId                String            @unique @db.Uuid @map("user_id")
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  gender                String            @default("M") @db.VarChar(1) // M, F
+  photoUrl              String?           @map("photo_url")
+  phoneSecondary        String?           @map("phone_secondary")
+  recruitmentDate       DateTime          @map("recruitment_date") @db.Date
+  status                String            @default("ACTIVE") // ACTIVE, SUSPENDED, INACTIVE
+  
+  // Relations
+  zones                 GeographicZone[]
+  assignments           ZoneAssignment[]
+  objectives            ZoneObjective[]
+  planterVisits         PlanterVisit[]
+  
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@map("zone_manager_profiles")
+}
+
+// Modèle de Hiérarchie Géographique
+model GeographicZone {
+  id                    String            @id @default(uuid()) @db.Uuid
+  name                  String
+  level                 String            // COUNTRY, REGION, DEPARTMENT, DISTRICT, COMMUNE, VILLAGE
+  code                  String            @unique // Code unique ex: CIV-SUD-ABO-001
+  
+  // Auto-relation parent/enfant
+  parentId              String?           @db.Uuid @map("parent_id")
+  parent                GeographicZone?   @relation("ZoneHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children              GeographicZone[]  @relation("ZoneHierarchy")
+  
+  // Chef de zone actuellement responsable
+  currentManagerId      String?           @db.Uuid @map("current_manager_id")
+  currentManager        ZoneManagerProfile? @relation(fields: [currentManagerId], references: [id], onDelete: SetNull)
+  
+  // Relations
+  assignments           ZoneAssignment[]
+  planterVisits         PlanterVisit[]
+  
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@index([level])
+  @@map("geographic_zones")
+}
+
+// Historique d'Affectation des Zones
+model ZoneAssignment {
+  id                    String            @id @default(uuid()) @db.Uuid
+  zoneId                String            @db.Uuid @map("zone_id")
+  zone                  GeographicZone    @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  
+  managerId             String            @db.Uuid @map("manager_id")
+  manager               ZoneManagerProfile @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  
+  assignedAt            DateTime          @default(now()) @map("assigned_at")
+  revokedAt             DateTime?         @map("revoked_at")
+  isActive              Boolean           @default(true) @map("is_active")
+  specialPermission     Boolean           @default(false) @map("special_permission") // Autorisation spéciale de chevauchement
+  notes                 String?           @db.Text
+  
+  @@map("zone_assignments")
+}
+
+// Objectifs de Cibles Opérationnelles
+model ZoneObjective {
+  id                    String            @id @default(uuid()) @db.Uuid
+  managerId             String            @db.Uuid @map("manager_id")
+  manager               ZoneManagerProfile @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  
+  period                String            // DAILY, WEEKLY, MONTHLY, ANNUAL
+  startDate             DateTime          @map("start_date") @db.Date
+  endDate               DateTime          @map("end_date") @db.Date
+  
+  // Cibles
+  targetQuantityKg      Float             @map("target_quantity_kg")
+  targetValueFCFA       Float             @map("target_value_fcfa")
+  targetActivePlanters  Int               @map("target_active_planters")
+  targetNewPlanters     Int               @map("target_new_planters")
+  targetRepaymentFCFA   Float             @map("target_repayment_fcfa")
+  
+  // Réalisés
+  achievedQuantityKg    Float             @default(0.0) @map("achieved_quantity_kg")
+  achievedValueFCFA     Float             @default(0.0) @map("achieved_value_fcfa")
+  achievedActivePlanters Int              @default(0) @map("achieved_active_planters")
+  achievedNewPlanters   Int               @default(0) @map("achieved_new_planters")
+  achievedRepaymentFCFA Float             @default(0.0) @map("achieved_repayment_fcfa")
+  
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@map("zone_objectives")
+}
+
+// Suivi des Visites Terrain / Mobile
+model PlanterVisit {
+  id                    String            @id @default(uuid()) @db.Uuid
+  managerId             String            @db.Uuid @map("manager_id")
+  manager               ZoneManagerProfile @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  
+  planterId             String            @db.Uuid @map("planter_id")
+  planter               Planter           @relation(fields: [planterId], references: [id], onDelete: Cascade)
+  
+  zoneId                String?           @db.Uuid @map("zone_id")
+  zone                  GeographicZone?   @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  
+  visitDate             DateTime          @map("visit_date")
+  purpose               String            // AGRONOMIC_CONTROL, CREDIT_EVALUATION, CROP_ESTIMATION, KYC_UPDATE
+  comments              String            @db.Text
+  
+  // Géolocalisation de la plantation visitée
+  latitude              Float?
+  longitude             Float?
+  
+  // Preuves photos
+  photoUrls             String[]          @map("photo_urls") // URLs des photos dans le Cloud (ex: S3/Supabase)
+  
+  // Offline Sync metadata
+  localId               String?           @unique @map("local_id") // ID généré par l'app mobile hors-ligne
+  isSynced              Boolean           @default(true) @map("is_synced")
+  
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@map("planter_visits")
 }
 

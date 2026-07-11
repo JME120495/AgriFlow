@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PlantersModule } from './planters/planters.module';
 import { SubBuyersModule } from './sub-buyers/sub-buyers.module';
+import { ZoneManagersModule } from './zone-managers/zone-managers.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SubBuyersModule } from './sub-buyers/sub-buyers.module';
     DashboardModule,
     PlantersModule,
     SubBuyersModule,
+    ZoneManagersModule,
   ],
 })
 export class AppModule {}

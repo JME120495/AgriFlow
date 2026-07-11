@@ -11,6 +11,9 @@ import PlanterForm from './pages/Planters/PlanterForm';
 import PlanterDetails from './pages/Planters/PlanterDetails';
 import SubBuyersList from './pages/SubBuyers/SubBuyersList';
 import SubBuyerDetail from './pages/SubBuyers/SubBuyerDetail';
+import ZoneManagersList from './pages/ZoneManagers/ZoneManagersList';
+import ZoneManagerDetails from './pages/ZoneManagers/ZoneManagerDetails';
+import ZoneMap from './pages/ZoneManagers/ZoneMap';
 
 // Route protégée vérifiant si l'utilisateur est authentifié
 const ProtectedRoute = ({ children }) => {
@@ -89,6 +92,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <SubBuyerDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/zone-managers"
+            element={
+              <ProtectedRoute>
+                <ZoneManagersList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/zone-managers/:id"
+            element={
+              <ProtectedRoute>
+                <ZoneManagerDetails />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/zone-managers/map"
+            element={
+              <ProtectedRoute>
+                <ZoneMap />
               </ProtectedRoute>
             }
           />
