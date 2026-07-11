@@ -179,6 +179,8 @@ const Dashboard = () => {
             <Link to="/planters" className="px-3 py-1.5 hover:text-white transition-colors">Planteurs</Link>
             <Link to="/purchases" className="px-3 py-1.5 hover:text-white transition-colors">Achats</Link>
             <Link to="/quality-controls" className="px-3 py-1.5 hover:text-white transition-colors">Qualité</Link>
+            <Link to="/warehouses" className="px-3 py-1.5 hover:text-white transition-colors">Magasins</Link>
+            <Link to="/stocks" className="px-3 py-1.5 hover:text-white transition-colors">Stocks</Link>
             {(authUser?.role?.name === 'ADMIN' || authUser?.role?.name === 'DIRECTEUR' || authUser?.role?.name === 'RESPONSABLE_QUALITE') && (
               <>
                 <Link to="/quality-controls/rules" className="px-3 py-1.5 hover:text-white transition-colors">Règles Qualité</Link>

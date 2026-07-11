@@ -15,6 +15,8 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { CreditsModule } from './credits/credits.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { QualityControlsModule } from './quality-controls/quality-controls.module';
+import { WarehousesModule } from './warehouses/warehouses.module';
+import { StocksModule } from './stocks/stocks.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
@@ -42,6 +44,8 @@ import { join } from 'path';
     CreditsModule,
     PurchasesModule,
     QualityControlsModule,
+    WarehousesModule,
+    StocksModule,
   ],
   providers: [
     {

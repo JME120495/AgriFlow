@@ -7,6 +7,15 @@ async function main() {
   console.log('[SEED] Début de la génération des données de test...');
 
   // Nettoyer les transactions existantes pour réinitialiser le seed proprement
+  await prisma.inventoryItem.deleteMany({});
+  await prisma.inventory.deleteMany({});
+  await prisma.detailedStockMovement.deleteMany({});
+  await prisma.reservation.deleteMany({});
+  await prisma.lot.deleteMany({});
+  await prisma.storageLocation.deleteMany({});
+  await prisma.storageZone.deleteMany({});
+  await prisma.warehouse.deleteMany({});
+
   await prisma.subBuyerLedger.deleteMany({});
   await prisma.subBuyerAdvanceJustification.deleteMany({});
   await prisma.subBuyerAdvance.deleteMany({});
@@ -66,20 +75,84 @@ async function main() {
 
   // 2. Magasins (Stores)
   const storesData = [
-    { name: 'Magasin Central Douala', location: 'Zone Industrielle, Douala', capacityKg: 100000.0 },
-    { name: 'Magasin Régional Abengourou', location: 'Quartier Commerce, Abengourou', capacityKg: 50000.0 },
-    { name: 'Magasin Régional Soubré', location: 'Sassandra-Marahoué, Soubré', capacityKg: 60000.0 },
+    {
+      code: 'MAG-2026-LIT-001',
+      name: 'Magasin Central Douala',
+      location: 'Zone Industrielle, Douala',
+      capacityKg: 100000.0,
+      type: 'STOCKAGE',
+      status: 'ACTIVE',
+      phone: '+237600000001',
+      address: 'Zone Industrielle, Douala',
+      country: 'Cameroun',
+      region: 'Littoral',
+      city: 'Douala',
+      gpsLatitude: 4.05,
+      gpsLongitude: 9.70
+    },
+    {
+      code: 'MAG-2026-EST-002',
+      name: 'Magasin Régional Abengourou',
+      location: 'Quartier Commerce, Abengourou',
+      capacityKg: 50000.0,
+      type: 'STOCKAGE',
+      status: 'ACTIVE',
+      phone: '+2250707070707',
+      address: 'Quartier Commerce, Abengourou',
+      country: "Côte d'Ivoire",
+      region: 'Indénié-Djuablin',
+      city: 'Abengourou',
+      gpsLatitude: 6.72,
+      gpsLongitude: -3.48
+    },
+    {
+      code: 'MAG-2026-NAV-003',
+      name: 'Magasin Régional Soubré',
+      location: 'Sassandra-Marahoué, Soubré',
+      capacityKg: 60000.0,
+      type: 'STOCKAGE',
+      status: 'ACTIVE',
+      phone: '+2250707070708',
+      address: 'Zone Industrielle, Soubré',
+      country: "Côte d'Ivoire",
+      region: 'La Nawa',
+      city: 'Soubré',
+      gpsLatitude: 5.79,
+      gpsLongitude: -6.60
+    },
   ];
 
   const dbStores = [];
   for (const store of storesData) {
     const s = await prisma.store.upsert({
       where: { name: store.name },
-      update: { capacityKg: store.capacityKg },
+      update: {
+        code: store.code,
+        capacityKg: store.capacityKg,
+        type: store.type as any,
+        status: store.status as any,
+        phone: store.phone,
+        address: store.address,
+        country: store.country,
+        region: store.region,
+        city: store.city,
+        gpsLatitude: store.gpsLatitude,
+        gpsLongitude: store.gpsLongitude,
+      },
       create: {
+        code: store.code,
         name: store.name,
         location: store.location,
         capacityKg: store.capacityKg,
+        type: store.type as any,
+        status: store.status as any,
+        phone: store.phone,
+        address: store.address,
+        country: store.country,
+        region: store.region,
+        city: store.city,
+        gpsLatitude: store.gpsLatitude,
+        gpsLongitude: store.gpsLongitude,
       },
     });
     dbStores.push(s);
@@ -366,7 +439,7 @@ async function main() {
 
   console.log('[SEED] Génération des achats, ventes et crédits...');
 
-  for (let i = 30; i >= 0; i--) {
+  for (let i = 5; i >= 0; i--) {
     const date = new Date(now);
     date.setDate(now.getDate() - i);
 
@@ -650,6 +723,280 @@ async function main() {
     }
   }
   console.log('[SEED] Contrôles qualité de test générés.');
+
+  // --- MODULE 9 : MAGASINS & ENTREPOTS SEEDING ---
+  console.log('[SEED] Début du seeding du Module 9 (Magasins & Entrepôts)...');
+
+  // Associer le magasinier au magasin d'Abengourou (dbStores[1])
+  const abengourouStore = dbStores[1];
+  await prisma.store.update({
+    where: { id: abengourouStore.id },
+    data: { responsibleId: magasinier1.id }
+  });
+
+  // 1. Entrepôts
+  const whA = await prisma.warehouse.create({
+    data: {
+      storeId: abengourouStore.id,
+      name: 'Entrepôt A - Principal',
+      capacityTonnes: 100.0,
+    }
+  });
+
+  const whB = await prisma.warehouse.create({
+    data: {
+      storeId: abengourouStore.id,
+      name: 'Entrepôt B - Secondaire',
+      capacityTonnes: 50.0,
+    }
+  });
+
+  // 2. Zones de stockage
+  const zoneA1 = await prisma.storageZone.create({
+    data: {
+      warehouseId: whA.id,
+      name: 'Zone A1 - Grade 1 Certifié',
+      cocoaGrade: 'GRADE_1',
+    }
+  });
+
+  const zoneA2 = await prisma.storageZone.create({
+    data: {
+      warehouseId: whA.id,
+      name: 'Zone A2 - Grade 2 Standard',
+      cocoaGrade: 'GRADE_2',
+    }
+  });
+
+  const zoneB1 = await prisma.storageZone.create({
+    data: {
+      warehouseId: whB.id,
+      name: 'Zone B1 - Vrac Sous-Grade',
+      cocoaGrade: 'SOUS_GRADE',
+    }
+  });
+
+  // 3. Emplacements (Locations)
+  const locCodesA1 = ['LOC-A-01', 'LOC-A-02', 'LOC-A-03', 'LOC-A-04'];
+  const locations = [];
+
+  for (const code of locCodesA1) {
+    const loc = await prisma.storageLocation.create({
+      data: {
+        zoneId: zoneA1.id,
+        code,
+        capacityKg: 10000.0,
+        currentWeightKg: code === 'LOC-A-01' ? 4500.0 : code === 'LOC-A-02' ? 6200.0 : 0.0,
+        currentBags: code === 'LOC-A-01' ? 70 : code === 'LOC-A-02' ? 95 : 0,
+      }
+    });
+    locations.push(loc);
+  }
+
+  const locCodesA2 = ['LOC-A-05', 'LOC-A-06'];
+  for (const code of locCodesA2) {
+    const loc = await prisma.storageLocation.create({
+      data: {
+        zoneId: zoneA2.id,
+        code,
+        capacityKg: 8000.0,
+        currentWeightKg: code === 'LOC-A-05' ? 3000.0 : 0.0,
+        currentBags: code === 'LOC-A-05' ? 45 : 0,
+      }
+    });
+    locations.push(loc);
+  }
+
+  const locCodesB1 = ['LOC-B-01', 'LOC-B-02'];
+  for (const code of locCodesB1) {
+    const loc = await prisma.storageLocation.create({
+      data: {
+        zoneId: zoneB1.id,
+        code,
+        capacityKg: 15000.0,
+        currentWeightKg: 0.0,
+        currentBags: 0,
+      }
+    });
+    locations.push(loc);
+  }
+
+  console.log('[SEED] Entrepôts, Zones et Emplacements créés.');
+
+  // 4. Mouvements de stock détaillés (DetailedStockMovements)
+  await prisma.detailedStockMovement.create({
+    data: {
+      type: 'IN_PURCHASE',
+      weightKg: 4500.0,
+      bagCount: 70,
+      destLocationId: locations[0].id, // LOC-A-01
+      storeId: abengourouStore.id,
+      createdById: magasinier1.id,
+      date: new Date(),
+    }
+  });
+
+  await prisma.detailedStockMovement.create({
+    data: {
+      type: 'IN_PURCHASE',
+      weightKg: 6200.0,
+      bagCount: 95,
+      destLocationId: locations[1].id, // LOC-A-02
+      storeId: abengourouStore.id,
+      createdById: magasinier1.id,
+      date: new Date(),
+    }
+  });
+
+  // Transfert interne de LOC-A-02 vers LOC-A-05
+  await prisma.detailedStockMovement.create({
+    data: {
+      type: 'INTERNAL_TRANSFER',
+      weightKg: 3000.0,
+      bagCount: 45,
+      sourceLocationId: locations[1].id, // LOC-A-02
+      destLocationId: locations[4].id, // LOC-A-05
+      storeId: abengourouStore.id,
+      createdById: magasinier1.id,
+      date: new Date(),
+    }
+  });
+
+  console.log('[SEED] Mouvements de stock détaillés créés.');
+
+  // 5. Fiche d'inventaire de test
+  const inv = await prisma.inventory.create({
+    data: {
+      inventoryNumber: 'INV-202607-0001',
+      status: 'PENDING_APPROVAL',
+      storeId: abengourouStore.id,
+      createdById: magasinier1.id,
+      startDate: new Date(),
+      gapComment: "Léger écart de dessiccateur (perte d'humidité naturelle).",
+    }
+  });
+
+  // Rapprochement sur LOC-A-01
+  await prisma.inventoryItem.create({
+    data: {
+      inventoryId: inv.id,
+      locationId: locations[0].id, // LOC-A-01
+      theoreticalWeight: 4500.0,
+      theoreticalBags: 70,
+      physicalWeight: 4492.0, // écart négatif de 8kg
+      physicalBags: 70,
+      weightGap: -8.0,
+      bagsGap: 0,
+    }
+  });
+
+  // Rapprochement sur LOC-A-02
+  await prisma.inventoryItem.create({
+    data: {
+      inventoryId: inv.id,
+      locationId: locations[1].id, // LOC-A-02
+      theoreticalWeight: 3200.0, // original 6200 - 3000 transférés
+      theoreticalBags: 50,
+      physicalWeight: 3200.0,
+      physicalBags: 50,
+      weightGap: 0.0,
+      bagsGap: 0,
+    }
+  });
+
+  console.log('[SEED] Fiche d\'inventaire de test créée.');
+
+  // 6. Seeding du Module 10 (Gestion des Stocks - Lots et Réservations)
+  console.log('[SEED] Début du seeding du Module 10 (Lots et Réservations)...');
+
+  // Lot 1 : Disponible
+  const lot1 = await prisma.lot.create({
+    data: {
+      numeroLot: 'LOT-2026-07-001',
+      campagne: '2025/2026',
+      qualite: 'GRADE_1',
+      poidsInitial: 4500.0,
+      poidsActuel: 4500.0,
+      nombreSacs: 70,
+      valeurAchat: 6750000.0,
+      valeurActuelle: 6750000.0,
+      emplacementId: locations[0].id, // LOC-A-01
+      status: 'DISPONIBLE',
+    }
+  });
+
+  // Lot 2 : Disponible
+  const lot2 = await prisma.lot.create({
+    data: {
+      numeroLot: 'LOT-2026-07-002',
+      campagne: '2025/2026',
+      qualite: 'GRADE_2',
+      poidsInitial: 3000.0,
+      poidsActuel: 3000.0,
+      nombreSacs: 45,
+      valeurAchat: 4425000.0,
+      valeurActuelle: 4425000.0,
+      emplacementId: locations[4].id, // LOC-A-05
+      status: 'DISPONIBLE',
+    }
+  });
+
+  // Lot 3 : Réservé
+  const lot3 = await prisma.lot.create({
+    data: {
+      numeroLot: 'LOT-2026-07-003',
+      campagne: '2025/2026',
+      qualite: 'GRADE_1',
+      poidsInitial: 3200.0,
+      poidsActuel: 3200.0,
+      nombreSacs: 50,
+      valeurAchat: 4800000.0,
+      valeurActuelle: 4800000.0,
+      emplacementId: locations[1].id, // LOC-A-02
+      status: 'RESERVE',
+    }
+  });
+
+  // Lot 4 : Bloqué
+  const lot4 = await prisma.lot.create({
+    data: {
+      numeroLot: 'LOT-2026-07-004',
+      campagne: '2025/2026',
+      qualite: 'GRADE_2',
+      poidsInitial: 1200.0,
+      poidsActuel: 1200.0,
+      nombreSacs: 18,
+      valeurAchat: 1770000.0,
+      valeurActuelle: 1770000.0,
+      emplacementId: locations[2].id, // LOC-A-03
+      status: 'BLOQUE',
+    }
+  });
+
+  // Mettre à jour les mouvements de stock détaillés pour lier les lots si besoin
+  await prisma.detailedStockMovement.updateMany({
+    where: { destLocationId: locations[0].id },
+    data: { lotId: lot1.id }
+  });
+
+  await prisma.detailedStockMovement.updateMany({
+    where: { destLocationId: locations[4].id },
+    data: { lotId: lot2.id }
+  });
+
+  // Réservation associée au Lot 3
+  await prisma.reservation.create({
+    data: {
+      lotId: lot3.id,
+      quantite: 3200.0,
+      motif: 'Réservation Exportation Cargo Soubré #45A',
+      statut: 'ACTIVE',
+      utilisateurId: magasinier1.id,
+    }
+  });
+
+  console.log('[SEED] Lots de cacao et Réservations créés.');
+
   console.log('[SEED] Alertes système générées.');
   console.log('[SEED] Base de données de test peuplée avec succès !');
 }

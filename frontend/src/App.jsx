@@ -23,6 +23,11 @@ import PurchaseForm from './pages/Purchases/PurchaseForm';
 import QualityControlsList from './pages/Purchases/QualityControlsList';
 import QualityControlForm from './pages/Purchases/QualityControlForm';
 import RefactionRulesConfig from './pages/Admin/RefactionRulesConfig';
+import WarehousesList from './pages/Warehouses/WarehousesList';
+import WarehouseDetail from './pages/Warehouses/WarehouseDetail';
+import StocksDashboard from './pages/Stocks/StocksDashboard';
+import LotsList from './pages/Stocks/LotsList';
+import LotDetail from './pages/Stocks/LotDetail';
 
 // Initialiser le WebSocket
 const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:3000', {
@@ -220,6 +225,47 @@ function App() {
             element={
               <ProtectedRoute>
                 <QualityControlForm />
+              </ProtectedRoute>
+            }
+          />
+          
+          <Route
+            path="/warehouses"
+            element={
+              <ProtectedRoute>
+                <WarehousesList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouses/:id"
+            element={
+              <ProtectedRoute>
+                <WarehouseDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stocks"
+            element={
+              <ProtectedRoute>
+                <StocksDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stocks/lots"
+            element={
+              <ProtectedRoute>
+                <LotsList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stocks/lots/:id"
+            element={
+              <ProtectedRoute>
+                <LotDetail />
               </ProtectedRoute>
             }
           />

@@ -93,6 +93,15 @@ model User {
   controlledQualityControls QualityControl[] @relation("ControlledBy")
   qualityControlHistories   QualityControlHistory[]
   
+  // Relations Module 9
+  managedStores             Store[]                  @relation("StoreManager")
+  inventoriesCreated        Inventory[]              @relation("InventoryCreator")
+  inventoriesValidated      Inventory[]              @relation("InventoryValidator")
+  detailedStockMovements    DetailedStockMovement[]
+  
+  // Relations Module 10
+  reservations              Reservation[]
+  
   createdAt           DateTime       @default(now()) @map("created_at")
   updatedAt           DateTime       @updatedAt @map("updated_at")
 
@@ -133,23 +142,45 @@ model RolePermission {
 }
 
 model Store {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique
-  location    String?
-  capacityKg  Float    @default(50000.0) @map("capacity_kg")
+  id                  String                  @id @default(uuid()) @db.Uuid
+  code                String?                 @unique
+  name                String                  @unique
+  location            String?
+  type                StoreType               @default(STOCKAGE)
+  status              StoreStatus             @default(ACTIVE)
+  capacityKg          Float                   @default(50000.0) @map("capacity_kg")
   
+  // Contacts & Géographie
+  responsibleId       String?                 @db.Uuid @map("responsible_id")
+  responsible         User?                   @relation("StoreManager", fields: [responsibleId], references: [id])
+  phone               String?
+  address             String?
+  country             String?                 @default("Côte d'Ivoire")
+  region              String?
+  department          String?
+  arrondissement      String?
+  city                String?
+  gpsLatitude         Float?                  @map("gps_latitude")
+  gpsLongitude        Float?                  @map("gps_longitude")
+
   // Relations
-  users       User[]
-  planters    Planter[]
-  purchases   Purchase[]
-  stockMovements StockMovement[]
-  systemAlerts   SystemAlert[]
+  users               User[]
+  planters            Planter[]
+  purchases           Purchase[]
+  stockMovements      StockMovement[]
+  systemAlerts        SystemAlert[]
   
   // Relations Module 4
-  subBuyerDeliveries SubBuyerDelivery[]
-  refactionRules     RefactionRule[]
+  subBuyerDeliveries  SubBuyerDelivery[]
+  refactionRules      RefactionRule[]
   
-  createdAt   DateTime @default(now()) @map("created_at")
+  // Relations Module 9
+  warehouses             Warehouse[]
+  detailedStockMovements DetailedStockMovement[]
+  inventories            Inventory[]
+
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
 
   @@map("stores")
 }
@@ -1044,5 +1075,211 @@ model QualityControlHistory {
   createdAt        DateTime             @default(now()) @map("created_at")
 
   @@map("quality_control_histories")
+}
+
+enum StoreType {
+  COLLECTE
+  STOCKAGE
+  TRANSIT
+  EXPORT
+}
+
+enum StoreStatus {
+  ACTIVE
+  CLOSED
+  MAINTENANCE
+}
+
+enum StockMovementType {
+  IN_PURCHASE
+  OUT_SALE
+  INTERNAL_TRANSFER
+  INTER_STORE_TRANSFER
+  INVENTORY_CORRECTION
+}
+
+enum InventoryStatus {
+  DRAFT
+  COUNTING
+  COMPLETED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+model Warehouse {
+  id              String         @id @default(uuid()) @db.Uuid
+  storeId         String         @db.Uuid @map("store_id")
+  store           Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name            String
+  capacityTonnes  Float          @map("capacity_tonnes")
+  storageZones    StorageZone[]
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@map("warehouses")
+}
+
+model StorageZone {
+  id              String         @id @default(uuid()) @db.Uuid
+  warehouseId     String         @db.Uuid @map("warehouse_id")
+  warehouse       Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  name            String
+  cocoaGrade      String         @default("GRADE_1") @map("cocoa_grade") // GRADE_1, GRADE_2, SOUS_GRADE
+  locations       StorageLocation[]
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@map("storage_zones")
+}
+
+model StorageLocation {
+  id              String            @id @default(uuid()) @db.Uuid
+  zoneId          String            @db.Uuid @map("zone_id")
+  zone            StorageZone       @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  code            String            @unique // LOC-AA-01-A-12
+  capacityKg      Float             @default(5000) @map("capacity_kg")
+  currentWeightKg Float             @default(0.0) @map("current_weight_kg")
+  currentBags     Int               @default(0) @map("current_bags")
+  
+  // Relations historiques
+  sourceMovements      DetailedStockMovement[] @relation("SourceLocation")
+  destinationMovements DetailedStockMovement[] @relation("DestinationLocation")
+  inventoryItems       InventoryItem[]
+  lots                 Lot[]
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("storage_locations")
+}
+
+model DetailedStockMovement {
+  id                String            @id @default(uuid()) @db.Uuid
+  type              StockMovementType
+  weightKg          Float             @map("weight_kg")
+  bagCount          Int               @map("bag_count")
+  
+  // Localisations physiques précises
+  sourceLocationId  String?           @db.Uuid @map("source_location_id")
+  sourceLocation    StorageLocation?  @relation("SourceLocation", fields: [sourceLocationId], references: [id])
+  destLocationId    String?           @db.Uuid @map("dest_location_id")
+  destLocation      StorageLocation?  @relation("DestinationLocation", fields: [destLocationId], references: [id])
+  
+  // Référence avec un Lot (Optionnel)
+  lotId             String?           @db.Uuid @map("lot_id")
+  lot               Lot?              @relation(fields: [lotId], references: [id])
+  
+  // Référence magasin global
+  storeId           String            @db.Uuid @map("store_id")
+  store             Store             @relation(fields: [storeId], references: [id])
+  
+  createdById       String            @db.Uuid @map("created_by_id")
+  createdBy         User              @relation(fields: [createdById], references: [id])
+  
+  referenceId       String?           @db.Uuid @map("reference_id") // ID achat, vente, transfert ou inventaire
+  date              DateTime          @default(now())
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  @@index([date])
+  @@map("detailed_stock_movements")
+}
+
+model Inventory {
+  id              String         @id @default(uuid()) @db.Uuid
+  inventoryNumber String         @unique @map("inventory_number") // INV-YYYYMM-XXXX
+  status          InventoryStatus @default(DRAFT)
+  storeId         String         @db.Uuid @map("store_id")
+  store           Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  createdById     String         @db.Uuid @map("created_by_id")
+  createdBy       User           @relation("InventoryCreator", fields: [createdById], references: [id])
+  validatedById   String?        @db.Uuid @map("validated_by_id")
+  validatedBy     User?          @relation("InventoryValidator", fields: [validatedById], references: [id])
+  
+  items           InventoryItem[]
+  gapComment      String?        @db.Text @map("gap_comment")
+  
+  startDate       DateTime       @map("start_date")
+  endDate         DateTime?      @map("end_date")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@map("inventories")
+}
+
+model InventoryItem {
+  id                 String          @id @default(uuid()) @db.Uuid
+  inventoryId        String          @db.Uuid @map("inventory_id")
+  inventory          Inventory       @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  locationId         String          @db.Uuid @map("location_id")
+  location           StorageLocation @relation(fields: [locationId], references: [id])
+  
+  theoreticalWeight  Float           @map("theoretical_weight")
+  theoreticalBags    Int             @map("theoretical_bags")
+  physicalWeight     Float           @map("physical_weight")
+  physicalBags       Int             @map("physical_bags")
+  
+  weightGap          Float           @map("weight_gap") // physicalWeight - theoreticalWeight
+  bagsGap            Int             @map("bags_gap")
+  
+  createdAt          DateTime        @default(now()) @map("created_at")
+
+  @@map("inventory_items")
+}
+
+enum LotStatus {
+  DISPONIBLE
+  RESERVE
+  EXPEDIE
+  BLOQUE
+}
+
+enum ReservationStatus {
+  ACTIVE
+  ANNULEE
+  TERMINEE
+}
+
+model Lot {
+  id              String            @id @default(uuid()) @db.Uuid
+  numeroLot       String            @unique @map("numero_lot")
+  campagne        String
+  qualite         CocoaQualityGrade @default(GRADE_2) @map("qualite")
+  poidsInitial    Float             @map("poids_initial")
+  poidsActuel     Float             @map("poids_actuel")
+  nombreSacs      Int               @map("nombre_sacs")
+  valeurAchat     Float             @map("valeur_achat")
+  valeurActuelle  Float             @map("valeur_actuelle")
+  
+  emplacementId   String            @db.Uuid @map("emplacement_id")
+  emplacement     StorageLocation   @relation(fields: [emplacementId], references: [id], onDelete: Cascade)
+  
+  origineId       String?           @db.Uuid @map("origine_id") // Planteur ID ou Sous-Acheteur ID
+  status          LotStatus         @default(DISPONIBLE)
+  
+  mouvements      DetailedStockMovement[]
+  reservations    Reservation[]
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("lots")
+}
+
+model Reservation {
+  id              String            @id @default(uuid()) @db.Uuid
+  lotId           String            @db.Uuid @map("lot_id")
+  lot             Lot               @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  quantite        Float
+  motif           String
+  statut          ReservationStatus @default(ACTIVE)
+  utilisateurId   String            @db.Uuid @map("utilisateur_id")
+  utilisateur     User              @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("reservations")
 }
 
